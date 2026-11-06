@@ -1,0 +1,33 @@
+--- v017/worker.py
++++ v018/worker.py
+@@ -470,6 +470,13 @@
+     def _monitor(self, data):
+         config = data or {}
+         auto = bool(config.get('auto', False))
++        fast_demo = bool(config.get('fast_demo', False))
++        # The worker owns the authoritative motion state. Never trust a stale
++        # UI request to suppress status/fault reads during PC motion/learning.
++        current_only = bool(auto and fast_demo and config.get('current_only', False)
++                            and not (self.motor_direction or self.bench_uart_enabled
++                                     or self.bench_limited_motion or self.learning_active
++                                     or not self.urgent.empty()))
+         log_frames = bool(config.get('log_frames', False))
+         # Short per-request deadline when auto polling; no blocking for 1.2s.
+         timeout = 0.12 if auto else 0.5
+@@ -480,7 +487,7 @@
+             commands = scheduled_monitor_commands(
+                 auto=auto,
+                 now=time.monotonic(), last=self._slow_time,
+-                fast_demo=bool(config.get('fast_demo', False))
++                fast_demo=fast_demo, current_only=current_only,
+             )
+             learning_status, learning_flags = None, None
+             for cmd in commands:
+@@ -532,6 +539,7 @@
+                 'ok': ok, 'failed': failed, 'auto': auto,
+                 'elapsed_ms': round((time.monotonic() - start) * 1000),
+                 'sample_at': time.monotonic(),
++                'current_only': current_only,
+             })
+         finally:
+             self._mute_trace = False

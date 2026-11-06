@@ -6,7 +6,7 @@
  Experimental time-limited host-controlled jogging for unmodified 0x0B01 firmware.
  A physical independent motor-power cutoff is MANDATORY; I1 is not E-stop.
  """
-@@ -30,112 +30,37 @@
+@@ -30,117 +30,44 @@
  from dial import CurrentDial
  from hud_widgets import HudRingDial
  
@@ -140,7 +140,14 @@
          self.connected = False
          self.pending = 0
          self._foreground_pending = False
-@@ -186,25 +111,19 @@
+         self._last_monitor_ts = None
+         self._last_demo_current_ts = None
++        self._background_paused = False
++        self._current_only_failures = 0
+         self._last_issue_at = {}
+         self.last_error_bits = None
+         self.fields = {}
+@@ -186,25 +113,19 @@
          central.setObjectName('centralRoot')
          self.setCentralWidget(central)
          root = QVBoxLayout(central)
@@ -170,7 +177,7 @@
          brand_names.addWidget(brand_word)
          brand_detail = QLabel('CI76  /  MOTION CONTROL SYSTEMS')
          brand_detail.setObjectName('brandDetail')
-@@ -217,16 +136,17 @@
+@@ -217,16 +138,17 @@
          hero.setObjectName('heroTitle')
          hero.setAlignment(Qt.AlignmentFlag.AlignRight)
          right_head.addWidget(hero)
@@ -191,7 +198,7 @@
          config_load = QPushButton('載入 .config')
          config_load.setToolTip('僅載入到畫面，不會自動寫入 CI76')
          config_load.clicked.connect(self.load_config)
-@@ -235,26 +155,30 @@
+@@ -235,26 +157,30 @@
          config_save.clicked.connect(self.save_config)
          tools.addWidget(config_load)
          tools.addWidget(config_save)
@@ -224,7 +231,7 @@
          conn_row.addWidget(self.connection_label)
          root.addWidget(conn)
  
-@@ -273,7 +197,7 @@
+@@ -273,7 +199,7 @@
              self.poll_period.addItem(f'{ms} ms', ms)
          self.poll_period.currentIndexChanged.connect(self.poll_period_changed)
          self.poll_rate = QLabel('電流實際：—')
@@ -233,7 +240,7 @@
          self.poll_rate.setStyleSheet('color:#7ACCC8')
          for b in (self.identity_btn, self.readall_btn, self.monitor_btn):
              actions.addWidget(b)
-@@ -282,8 +206,8 @@
+@@ -282,8 +208,8 @@
          actions.addWidget(self.poll_rate)
          self.poll_trace = QCheckBox('記錄輪詢封包')
          self.poll_trace.setToolTip('50/100ms 自動輪詢時關閉可避免 UART log 每秒大量刷屏')
@@ -244,7 +251,7 @@
          root.addLayout(actions)
  
          # Keep the familiar one-page settings screen intact inside its own tab.
-@@ -293,7 +217,7 @@
+@@ -293,7 +219,7 @@
          main_tab_layout.setContentsMargins(0, 0, 0, 0)
          main_tab_layout.setSpacing(5)
          # One compact cross-column control strip. Never squeeze the monitoring panel.
@@ -253,7 +260,7 @@
          motor_layout = QVBoxLayout(motor_box)
          motor_layout.setContentsMargins(8, 6, 8, 5)
          motor_layout.setSpacing(2)
-@@ -325,11 +249,9 @@
+@@ -325,11 +251,9 @@
          self.motor_feedback = QLabel('需具備 800 ms 失聯停止保護的韌體')
          self.motor_feedback.setMinimumWidth(130)
          self.motor_feedback.setStyleSheet('color:#E8B17C;font-size:8pt')
@@ -266,7 +273,7 @@
          self.diagnostic_btn = QPushButton('擷取診斷')
          self.diagnostic_btn.clicked.connect(lambda: self.submit('diagnostics'))
          diagnostic_row.addWidget(self.diagnostic_btn)
-@@ -340,10 +262,8 @@
+@@ -340,10 +264,8 @@
          self.logs_btn = QPushButton('Log 資料夾')
          self.logs_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.event_store.folder))))
          diagnostic_row.addWidget(self.logs_btn)
@@ -278,7 +285,7 @@
          self.learn_btn = QPushButton('開始行程學習')
          self.learn_btn.setToolTip('UART 0x02/01；學習將自行走完整個行程，需具備獨立硬體停止設備')
          self.learn_btn.clicked.connect(self.request_learning_start)
-@@ -351,11 +271,12 @@
+@@ -351,11 +273,12 @@
          self.learn_abort_btn.clicked.connect(self.request_learning_abort)
          self.learn_feedback = QLabel('尚未開始行程學習')
          self.learn_feedback.setStyleSheet('color:#93B9C8;font-size:8pt')
@@ -296,7 +303,7 @@
          main_tab_layout.addWidget(motor_box)
          self.stop_shortcut = QShortcut(QKeySequence('Esc'), self)
          self.stop_shortcut.activated.connect(self.request_stop)
-@@ -444,10 +365,7 @@
+@@ -444,10 +367,7 @@
              bar.setRange(0, 1000)
              bar.setValue(0)
              bar.setTextVisible(False)
@@ -308,7 +315,7 @@
              meter_layout.addLayout(meter_header)
              meter_layout.addWidget(bar)
              self.live[key] = display
-@@ -539,13 +457,13 @@
+@@ -539,13 +459,13 @@
          self.console.setVisible(False)
          self.statusBar().showMessage('MOTECK CI76 · LAB 版  |  參數以 MCU 讀回為準  |  未改變既有馬達安全限制  |  Flash 保存待驗證')
          self.set_connected(False)
@@ -323,7 +330,7 @@
          root = QVBoxLayout(page)
          root.setContentsMargins(13, 11, 13, 10)
          root.setSpacing(8)
-@@ -567,9 +485,9 @@
+@@ -567,9 +487,9 @@
          header.addLayout(heading_col, 1)
          header.addWidget(QLabel('DISPLAY'), 0, Qt.AlignmentFlag.AlignVCenter)
          self.demo_view_combo = QComboBox()
@@ -336,7 +343,7 @@
          self.demo_view_combo.currentIndexChanged.connect(self._update_demo_view)
          header.addWidget(self.demo_view_combo)
          root.addLayout(header)
-@@ -611,7 +529,10 @@
+@@ -611,7 +531,10 @@
          right.setSpacing(1)
          self.hud_limit_dial = HudRingDial('CURRENT LIMIT SETPOINT')
          self.hud_limit_dial.setReading(1.0)
@@ -348,7 +355,7 @@
          self.demo_target = QLabel('1.00 A')
          self.demo_target.setObjectName('hudNum')
          self.demo_target.setAlignment(Qt.AlignmentFlag.AlignCenter)
-@@ -671,7 +592,8 @@
+@@ -671,7 +594,8 @@
          self.demo_write_status.setObjectName('hudCaption')
          self.demo_write_status.setWordWrap(True)
          control_layout.addWidget(self.demo_write_status)
@@ -358,7 +365,16 @@
  
          status_row = QHBoxLayout()
          status_row.setSpacing(8)
-@@ -706,10 +628,6 @@
+@@ -698,6 +622,8 @@
+         foot.setObjectName('hudCaption')
+         foot.setWordWrap(True)
+         root.addWidget(foot)
++        self.demo_poll_scope = foot
++        self.demo_poll_scope.setText('自動監控：第二頁僅讀電流；PC 控制／學習時保留安全監控 · 無 RPM 或推力實測')
+ 
+         self._update_demo_view()
+         scroll = QScrollArea()
+@@ -706,10 +632,6 @@
          scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
          scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
          scroll.setWidget(page)
@@ -369,7 +385,7 @@
          return scroll
  
      def _update_demo_view(self, *_):
-@@ -719,7 +637,7 @@
+@@ -719,7 +641,7 @@
          # The dial shows a large right-hand number; prevent duplicate
          # digital values in mixed/dial modes, retain the label for bar-only.
          self.demo_actual.setVisible(mode == 'bar')
@@ -378,7 +394,7 @@
  
      def request_clear_faults(self):
          if not (self.connected and self.identity_verified) or self.motion_active or self.learning_requested:
-@@ -829,7 +747,7 @@
+@@ -829,7 +751,7 @@
  
      def _flush_demo_limit(self):
          value = self._demo_pending_value
@@ -387,7 +403,7 @@
              self.demo_update_timer.stop()
              return
          if value is None or self._demo_write_inflight or self._foreground_pending:
-@@ -957,13 +875,13 @@
+@@ -957,13 +879,13 @@
  
      def _render_motion_state(self):
          bench = self.legacy_fw and self.bench_uart_enabled
@@ -403,7 +419,7 @@
          self.uart_mode_btn.setEnabled(self.connected and self.identity_verified and self.legacy_fw
                                        and not bool(self.motion_active) and not self.stop_pending)
          self.uart_mode_btn.setText('UART MODE：ON' if self.bench_uart_enabled else 'UART MODE：OFF')
-@@ -989,7 +907,7 @@
+@@ -989,7 +911,7 @@
          self.demo_restore_btn.setEnabled(self.connected and self.identity_verified and self.demo_dirty
                                            and not self.motion_active and not self.learning_requested)
          can_demo_write = (self.connected and self.identity_verified
@@ -412,7 +428,47 @@
          self.demo_slider.setEnabled(can_demo_write)
          self.demo_target_spin.setEnabled(can_demo_write)
          self.demo_apply_btn.setEnabled(can_demo_write and not self._demo_write_inflight)
-@@ -1040,7 +958,7 @@
+@@ -1014,10 +936,38 @@
+         # One global monitor. Demo uses current-priority scheduling; no
+         # duplicate checkbox, extra polling thread or queued monitor burst.
+         if self.connected and self.auto_poll.isChecked() and self.pending == 0:
++            fast_demo = self.tabs.currentWidget() is self.demo_tab
++            current_only = fast_demo and not (
++                self.motion_active or self.learning_requested or self.bench_uart_enabled
++                or self.stop_pending or self.interlock_fault)
++            self._set_poll_scope(current_only)
+             self.submit('monitor', {
+                 'auto': True, 'log_frames': self.poll_trace.isChecked(),
+-                'fast_demo': self.tabs.currentWidget() is self.demo_tab,
++                'fast_demo': fast_demo, 'current_only': current_only,
+             })
++
++    def _set_poll_scope(self, current_only):
++        if current_only:
++            self.demo_poll_scope.setText('僅更新實際電流；位置／狀態／故障／運轉時間暫停更新 · 無 RPM 或推力實測')
++        else:
++            self.demo_poll_scope.setText('完整／安全監控；電流優先，其他資料依原排程更新 · 無 RPM 或推力實測')
++        if current_only == self._background_paused:
++            return
++        self._background_paused = current_only
++        if not current_only:
++            # Keep paused values UNKNOWN until each read actually succeeds.
++            return
++        for key in list(self.latest_monitor):
++            if key != 'current':
++                del self.latest_monitor[key]
++        self._gauge_unavailable('position', '第二頁僅讀電流；位置暫停更新')
++        for key in ('motor', 'uart', 'sensor', 'errors'):
++            self.live[key].setText('—（暫停更新）')
++        self.motor_time_label.setText('—（暫停更新）')
++        self.hud_motor_state.setText('PAUSED / UNKNOWN')
++        self.hud_sensor.setText('PAUSED / UNKNOWN')
++        self._reset_error_flags('暫停更新（僅電流）')
++        self.hud_fault.setText('PAUSED / UNKNOWN')
+ 
+     def poll_toggled(self, checked):
+         self._last_monitor_ts = None
+@@ -1040,7 +990,7 @@
              self._last_demo_current_ts = None
  
      def _resume_poll(self):
@@ -421,7 +477,7 @@
              self.timer.start(self.poll_period.currentData())
  
      def _update_gauge(self, key, value):
-@@ -1061,10 +979,10 @@
+@@ -1061,10 +1011,10 @@
      @staticmethod
      def _flag_style(state):
          styles = {
@@ -436,7 +492,7 @@
          }
          return styles[state] + 'border-radius:4px;padding:2px;font-size:8pt;'
  
-@@ -1113,15 +1031,16 @@
+@@ -1113,15 +1063,16 @@
      def _create_group(self, group):
          g = QGroupBox(group + '參數')
          layout = QVBoxLayout(g)
@@ -455,7 +511,7 @@
              lower, upper, decimals, step = field_editor_spec(key)
              if isinstance(edit, QDoubleSpinBox):
                  edit.setDecimals(decimals)
-@@ -1136,6 +1055,8 @@
+@@ -1136,6 +1087,8 @@
              edit.setEnabled(False)
              edit.setMinimumWidth(97)
              self.fields[key] = edit
@@ -464,7 +520,7 @@
              fields.addRow(label, edit)
          layout.addLayout(fields)
          if group == '電流':
-@@ -1224,32 +1145,96 @@
+@@ -1224,32 +1177,98 @@
      def refresh_ports(self):
          prev = self.ports.currentData() if hasattr(self, 'ports') else None
          self.ports.clear()
@@ -558,6 +614,8 @@
          self.motion_supported = self.motion_supported if state else False
          if not state:
 +            self.timer.stop()
++            self._background_paused = False
++            self._current_only_failures = 0
 +            self.latest_monitor.clear()
 +            self.hud_sensor.setText('UNKNOWN')
 +            self.demo_actual.setText('— A')
@@ -570,7 +628,7 @@
              self._last_demo_current_ts = None
              self.demo_sample_rate.setText('電流實際刷新：—')
              self.demo_update_timer.stop()
-@@ -1297,6 +1282,8 @@
+@@ -1297,6 +1316,8 @@
                      self.live[k].setText('—（尚未查詢）')
  
      def toggle_connection(self):
@@ -579,7 +637,7 @@
          if self.connected:
              if self.learning_requested:
                  self.request_learning_abort()
-@@ -1314,17 +1301,20 @@
+@@ -1314,17 +1335,20 @@
                  QMessageBox.warning(self, '請先關閉 UART MODE',
                      '先按「UART MODE：ON」關閉控制模式，確認讀回 OFF 後再斷線。')
                  return
@@ -605,7 +663,7 @@
              return
          if self.interlock_fault and action not in ('monitor','disconnect'):
              self.statusBar().showMessage('上一次學習／停止未確認；請實體確認停止並重新連線')
-@@ -1381,13 +1371,25 @@
+@@ -1381,13 +1405,25 @@
                  self.demo_write_status.setText('由第一頁寫入電流參數中；請等待 MCU 讀回確認')
              self.submit('writegroup', (group, vals))
  
@@ -634,7 +692,7 @@
              self.limit_slider_info.setStyleSheet('color:#76D4C9;font-size:8pt;')
              self.limit_slider.setEnabled(self.connected)
              self.demo_slider.setEnabled(self.connected and self.identity_verified and not self.learning_requested)
-@@ -1404,6 +1406,9 @@
+@@ -1404,6 +1440,9 @@
          self.write_buttons[group].setEnabled(self.connected and self.identity_verified)
  
      def on_success(self, action, data):
@@ -644,7 +702,7 @@
          if action not in ('connect','disconnect','readgroup_part','group_problem',
                            'monitor_item','monitor_problem', 'motor_lost', 'motor_autostop',
                            'learning_stage', 'learning_result', 'learning_abort'):
-@@ -1412,16 +1417,36 @@
+@@ -1412,16 +1451,36 @@
              self.identity_verified = False
              self.group_read_ok.clear()
              self.set_connected(True)
@@ -681,7 +739,7 @@
              self.motion_supported = firmware_motion_supported(data['version'], data['device'])
              self.legacy_fw = data['version'] == '0x0B01' and data['device'] == '0x0B01'
              self.bench_uart_enabled = False
-@@ -1528,7 +1553,7 @@
+@@ -1528,7 +1587,7 @@
              actual_a = float(data['actual_A'])
              self.demo_verified_limit = actual_a
              # Update Page 1 ONLY from MCU readback, not a speculative Demo target.
@@ -690,7 +748,7 @@
              if self._demo_pending_value is not None and abs(self._demo_pending_value - actual_a) > 0.011:
                  self.demo_write_status.setText(
                      f'MCU 已確認 {actual_a:.2f} A；Demo 新目標 {self._demo_pending_value:.2f} A 等待寫入')
-@@ -1564,7 +1589,7 @@
+@@ -1564,7 +1623,7 @@
                  self.demo_dirty = False
                  self.demo_verified_limit = None
                  if data['current_group'] is not None:
@@ -699,7 +757,7 @@
                  self.demo_speed_modified = False
                  self.demo_write_status.setText('已恢復本次連線開始展示前的限流與速度（讀回一致）')
                  self.log('DEMO 電流原始參數已還原（僅 MCU RAM，未驗證斷電）')
-@@ -1657,6 +1682,14 @@
+@@ -1657,6 +1716,14 @@
              if cmd == 0x17:
                  self._reset_error_flags('通訊異常／未知')
                  self.hud_fault.setText('UART TIMEOUT')
@@ -714,10 +772,23 @@
              for key in keys:
                  if key == 'motor_time':
                      self.motor_time_label.setText('—（查詢失敗）')
-@@ -1679,6 +1712,26 @@
+@@ -1679,6 +1746,39 @@
                  self._last_issue_at[cmd] = now
                  self.log(f'WARN  監控 0x{cmd:02X}：{why}')
          elif action == 'monitor':
++            if 'current_only' in data:
++                self._set_poll_scope(data['current_only'])
++            if data.get('current_only') and data['failed'] and not data['ok']:
++                # A single lost current packet is not proof of USB removal.
++                # Mark the value unavailable immediately, but close/lock only
++                # after three consecutive failed current-only polls.
++                self._current_only_failures += 1
++                if self._current_only_failures < 3:
++                    return
++            else:
++                if self._current_only_failures and data['ok'] and self.identity_verified:
++                    self._connection_state('CI76 VERIFIED')
++                self._current_only_failures = 0
 +            if data['failed'] and not data['ok']:
 +                # Reuse the existing safe disconnect path. Never auto-restore,
 +                # STOP, or toggle UART MODE on an idle monitoring timeout.
@@ -741,7 +812,7 @@
              if data['auto'] and time.monotonic() - self._last_telemetry_log > 1.0:
                  self._last_telemetry_log = time.monotonic()
                  sample = dict(current_A=self.latest_monitor.get('current'),
-@@ -1702,6 +1755,16 @@
+@@ -1702,6 +1802,16 @@
              self._resume_poll()
  
      def on_error(self, action, message):
@@ -758,7 +829,7 @@
          if action == 'writegroup' and self._demo_pending_value is None:
              self.demo_write_status.setText('參數寫入尚未確認：請重新讀取 MCU 電流參數')
          if action == 'demo_limit':
-@@ -1864,7 +1927,7 @@
+@@ -1864,7 +1974,7 @@
  
  def main():
      app = QApplication(sys.argv)

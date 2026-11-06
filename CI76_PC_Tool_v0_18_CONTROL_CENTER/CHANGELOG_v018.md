@@ -1,4 +1,6 @@
-# v0.18 — UI Refinement (2026-11-05)
+# v0.18 — UI Refinement
+
+## 初版交付 (2026-11-05)
 
 - 集中 Midnight Tech Blue QSS + Fusion + QPalette，兩頁與 popup 同步；深色 Tooltip、焦點、停用狀態。
 - MOTECK 純文字 fallback 與可選正式 PNG/SVG 載入；移除孤立 M 方塊。
@@ -12,3 +14,12 @@
 - 調整兩項舊靜態 theme 測試：因 QSS 移至 theme.py，改檢查共用來源；非移除行為要求。
 - 未修改 worker.py、protocol.py、transport.py、motion.py、monitoring.py、diagnostics.py、eventlog.py、Flash 與 firmware_review_only。
 - Windows 實際 GUI／DPI 與 CI76 硬體尚未驗證；尚未達成完整 Windows 視覺驗收。
+
+## 第二頁電流更新優化 (2026-11-06)
+
+- 依後續需求，第二頁待機的自動監控只送 0x10 電流查詢；第一頁與手動完整讀取保留。
+- worker.py 的 _monitor 與 monitoring.py 的排程新增 current_only 分支；除此之外，序列埠驅動、命令編解碼、Checksum、Flash、限流讀回與馬達／學習控制流程不變。
+- GUI 與 worker 共同把關：PC 控制／UART MODE／學習時回到原安全背景監控，不允許 stale UI 取消必要查詢。
+- 暫停的非電流欄位顯示 UNKNOWN，不假裝維持即時正常；CSV 不重複填入舊的非電流資料。
+- 單次電流逾時清空讀值，三次連續失敗才處理失聯；成功後重置計數，無自動重試連線。
+- 新增排程、worker 安全覆寫、限流讀回、Qt 切頁、UNKNOWN 與逾時測試。硬體更新率與 Windows 實機驗證仍未執行。

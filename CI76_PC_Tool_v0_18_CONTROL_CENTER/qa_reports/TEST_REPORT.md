@@ -1,4 +1,8 @@
-# v0.18 validation report — 2026-11-05 (Asia/Taipei)
+# v0.18 validation report — initial delivery 2026-11-05 (Asia/Taipei)
+
+**Follow-up 2026-11-06:** Current-only tuning polling is now included.
+The 145-test result below is historical; the final suite output is `pytest.txt`.
+See `CURRENT_ONLY_REPORT.md` for the authorized monitoring/worker changes and final verification.
 
 ## Scope and environment
 

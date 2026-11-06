@@ -66,6 +66,8 @@ class CI76Window(QMainWindow):
         self._foreground_pending = False
         self._last_monitor_ts = None
         self._last_demo_current_ts = None
+        self._background_paused = False
+        self._current_only_failures = 0
         self._last_issue_at = {}
         self.last_error_bits = None
         self.fields = {}
@@ -620,6 +622,8 @@ class CI76Window(QMainWindow):
         foot.setObjectName('hudCaption')
         foot.setWordWrap(True)
         root.addWidget(foot)
+        self.demo_poll_scope = foot
+        self.demo_poll_scope.setText('自動監控：第二頁僅讀電流；PC 控制／學習時保留安全監控 · 無 RPM 或推力實測')
 
         self._update_demo_view()
         scroll = QScrollArea()
@@ -932,10 +936,38 @@ class CI76Window(QMainWindow):
         # One global monitor. Demo uses current-priority scheduling; no
         # duplicate checkbox, extra polling thread or queued monitor burst.
         if self.connected and self.auto_poll.isChecked() and self.pending == 0:
+            fast_demo = self.tabs.currentWidget() is self.demo_tab
+            current_only = fast_demo and not (
+                self.motion_active or self.learning_requested or self.bench_uart_enabled
+                or self.stop_pending or self.interlock_fault)
+            self._set_poll_scope(current_only)
             self.submit('monitor', {
                 'auto': True, 'log_frames': self.poll_trace.isChecked(),
-                'fast_demo': self.tabs.currentWidget() is self.demo_tab,
+                'fast_demo': fast_demo, 'current_only': current_only,
             })
+
+    def _set_poll_scope(self, current_only):
+        if current_only:
+            self.demo_poll_scope.setText('僅更新實際電流；位置／狀態／故障／運轉時間暫停更新 · 無 RPM 或推力實測')
+        else:
+            self.demo_poll_scope.setText('完整／安全監控；電流優先，其他資料依原排程更新 · 無 RPM 或推力實測')
+        if current_only == self._background_paused:
+            return
+        self._background_paused = current_only
+        if not current_only:
+            # Keep paused values UNKNOWN until each read actually succeeds.
+            return
+        for key in list(self.latest_monitor):
+            if key != 'current':
+                del self.latest_monitor[key]
+        self._gauge_unavailable('position', '第二頁僅讀電流；位置暫停更新')
+        for key in ('motor', 'uart', 'sensor', 'errors'):
+            self.live[key].setText('—（暫停更新）')
+        self.motor_time_label.setText('—（暫停更新）')
+        self.hud_motor_state.setText('PAUSED / UNKNOWN')
+        self.hud_sensor.setText('PAUSED / UNKNOWN')
+        self._reset_error_flags('暫停更新（僅電流）')
+        self.hud_fault.setText('PAUSED / UNKNOWN')
 
     def poll_toggled(self, checked):
         self._last_monitor_ts = None
@@ -1226,6 +1258,8 @@ class CI76Window(QMainWindow):
         self.motion_supported = self.motion_supported if state else False
         if not state:
             self.timer.stop()
+            self._background_paused = False
+            self._current_only_failures = 0
             self.latest_monitor.clear()
             self.hud_sensor.setText('UNKNOWN')
             self.demo_actual.setText('— A')
@@ -1712,6 +1746,19 @@ class CI76Window(QMainWindow):
                 self._last_issue_at[cmd] = now
                 self.log(f'WARN  監控 0x{cmd:02X}：{why}')
         elif action == 'monitor':
+            if 'current_only' in data:
+                self._set_poll_scope(data['current_only'])
+            if data.get('current_only') and data['failed'] and not data['ok']:
+                # A single lost current packet is not proof of USB removal.
+                # Mark the value unavailable immediately, but close/lock only
+                # after three consecutive failed current-only polls.
+                self._current_only_failures += 1
+                if self._current_only_failures < 3:
+                    return
+            else:
+                if self._current_only_failures and data['ok'] and self.identity_verified:
+                    self._connection_state('CI76 VERIFIED')
+                self._current_only_failures = 0
             if data['failed'] and not data['ok']:
                 # Reuse the existing safe disconnect path. Never auto-restore,
                 # STOP, or toggle UART MODE on an idle monitoring timeout.

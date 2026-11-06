@@ -2,10 +2,8 @@
   "baseline_archive_files_identical": 53,
   "unchanged_sha256": {
     "protocol.py": "9af0724eb32ce37650172f0ac091222190d8f77d8aca348ef24aba7f1a4ab962",
-    "worker.py": "3031e3844aab86541b10c55a398a86da61e4ae6cbf2b687c5564eca49967f845",
     "transport.py": "44cf08ff5e981cf127c64e4da1c963f2c254512bc5cef2107d83bb493d1f60a6",
     "motion.py": "a77c862d49432233c565ad8b1b4af5d0227b45275bbdf33a3a218f61210783f8",
-    "monitoring.py": "6b7663521bbb22a9505ead6a93c290698ec5c82d84ab056ca0daa7fbdd3eaa06",
     "diagnostics.py": "ca421ce575e79e98ecf9ba92a999caf9316f4a63fd9b3086481e01dc97efadab",
     "eventlog.py": "401965e74431992694c8e1fa99ba0342ffc275cedc00c16b55c7961140714618",
     "lab_features.py": "7e79732372fe625ad0e48b75a6215920a86c33c0d14b9baa56f7694dae065a42",
@@ -15,5 +13,17 @@
     "firmware_review_only/README.md": "ed48bb5e4c6c175cd63d07ecce79c6a02e590b986eda8327da64ecb1d93bf6af",
     "firmware_review_only/ctl.c": "8652602cb827d0503a8381e3bc79263a4c3aac53c57003acabc6b0e27d7e8c84",
     "firmware_review_only/ctl_learn_guard_review.patch": "0b4775e4067055425e39cc540715d9596985762c15ce7b8df56d3766ba4ef747"
+  },
+  "modified_monitoring_only": {
+    "worker.py": {
+      "baseline_sha256": "3031e3844aab86541b10c55a398a86da61e4ae6cbf2b687c5564eca49967f845",
+      "current_sha256": "1d81794592ec2662fb3f2ecd9309e4d49841cd938d9d8f1b45f5042a4d8bb8b1",
+      "reason": "Authorized current-only tuning polling; existing protocol and motion/learning control paths retained"
+    },
+    "monitoring.py": {
+      "baseline_sha256": "6b7663521bbb22a9505ead6a93c290698ec5c82d84ab056ca0daa7fbdd3eaa06",
+      "current_sha256": "09f2c37c3b377a3c670c93a762dc02cb2663e26ea17279ea4f0e665e5ebedcc3",
+      "reason": "Authorized current-only tuning polling; existing protocol and motion/learning control paths retained"
+    }
   }
 }

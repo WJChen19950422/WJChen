@@ -38,3 +38,7 @@ suite result; test names are in `tests/test_v018_ui.py` unless noted.
 No failed test remains. BLOCKED items require actual Windows/device follow-up;
 Windows visual acceptance is still outstanding. Original firmware bugs remain out
 of scope and unchanged.
+
+## 2026-11-06 current-only follow-up
+
+A07 的電流專用輪詢採單次立即標記失效、連續三次失敗才關閉／鎖定；A25 第二頁待機僅查 0x10，其他欄位 UNKNOWN，控制／學習時保留原安全查詢。新增測試見 test_v018_current_only.py。最終測試數量見 pytest.txt；Windows／硬體項目仍 BLOCKED。

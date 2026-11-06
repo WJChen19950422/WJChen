@@ -49,7 +49,8 @@ def gauge_value(value: float, maximum: float) -> int:
 
 
 def scheduled_monitor_commands(*, auto: bool, now: float, last: dict[int, float],
-                               fast_demo: bool = False) -> list[int]:
+                               fast_demo: bool = False,
+                               current_only: bool = False) -> list[int]:
     """Schedule read-only commands without creating a backlog.
 
     Normal Page 1 retains its original polling pattern. In Demo mode, the
@@ -59,6 +60,11 @@ def scheduled_monitor_commands(*, auto: bool, now: float, last: dict[int, float]
     """
     if not auto:
         return [0x10, 0x11, 0x12, 0x13, 0x17, 0x14]
+
+    # Opt-in only for the tuning page's idle automatic polling. Manual reads
+    # and Page 1 keep their full schedules. The worker enforces safety gates.
+    if fast_demo and current_only:
+        return [0x10]
 
     if fast_demo:
         result = [0x10]
