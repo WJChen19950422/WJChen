@@ -1,0 +1,70 @@
+# MOTECK CI76 Control Center v0.18 — LAB
+
+Windows 10/11 · Python 3.12 · PySide6 6.7+ · pyserial 3.5+ · Protocol 251110
+
+v0.18 是以隨附 v0.17 原始碼漸進修改的 UI 版本。原始 v0.17 資料夾完整保留。
+MCU 韌體、UART Protocol、Checksum、封包、Flash、worker 與既有馬達安全限制均未修改。
+
+## 執行
+
+解壓縮完整資料夾後雙擊 `START_PC_TOOL.bat`。或在本資料夾 PowerShell 執行：
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe main.py
+```
+
+## 使用方式與 v0.18 行為
+
+- 兩頁使用統一 Midnight Tech Blue 主題。Qt Fusion、完整深色 Palette、非原生 COM popup，降低 Windows 淺色控制項洩漏。深色訊息框、Tooltip、鍵盤焦點及停用狀態共用主題。
+- MOTECK 使用文字標誌；沒有假造 Logo。正式資產的安裝方式見 `assets/README.md`。
+- 第一頁：UART MODE、速度、伸出、縮回、STOP（Esc）、開始學習、取消學習依序排列。安全細節保留在 Tooltip 與原本確認對話框。三欄表單在小螢幕僅局部捲動；UART Log 預設收合。
+- 第二頁：左側即時電流（UART 0x10）、右側 0–8 A 限流控制、下方狀態摘要。可選 Bar + Gauge／Bar only／Gauge only。沒有額外馬達操作鍵或自動監控開關。
+- 第一頁限流是本機草稿，必須確認後按「寫入（暫存）」。第二頁約 250 ms 合併目標寫入並讀回確認。Demo 成功讀回或還原會更新兩頁的 MCU 確認狀態，保留第一頁未送出草稿；第一頁明確重新讀取才會以讀回值取代草稿。
+- 切離第二頁會取消尚未送出的 Demo 目標；不會取消已在 UART 執行的交易，也不會因切頁重新寫入。
+- 0 A 可選但不是緊急停止。保留 MCU 過載門檻驗證與成功讀回要求，無額外 >2 A 確認流程。
+- 自動監控仍是單一全域開關，目標週期 50–1500 ms；實際刷新時間依 UART 排程與延遲顯示，非保證 ADC 取樣速率。
+
+## COM 記憶及 Auto Connect
+
+`QSettings("MOTECK", "CI76ControlCenter")` 僅保存安全偏好：Auto Connect 與上次驗證成功的 Port / USB 識別資料，不保存馬達命令、參數或寫入意圖。
+
+1. 初次啟動 **自動連線預設關閉**。掃描與勾選本身不會開啟連線。
+2. 若有唯一符合的上次裝置，預先選取；優先比對 USB serial + VID/PID，否則需相同 COM 與一致描述／HWID。僅 COM 號碼不足以自動判定。
+3. 啟用自動連線後，下次啟動只嘗試一次，不逐一探測其他 Port；缺少、重複、被占用均等待手動操作。
+4. 開啟 COM 後，沿用 SerialWorker 唯讀 identity 查詢。Device Code 必須為 `0x0B01`；Firmware Version 不必等於 `0x0B01`。
+5. 只有驗證成功才更新紀錄。錯誤設備碼或驗證逾時會關閉新連線，不寫參數、不開 UART MODE、不清故障、不學習、不控制馬達。
+6. 手動斷線後不會當次自動重連。USB／監控失敗會清除失效讀值；若仍有展示修改或安全操作未解決，不會偷偷還原或重播設定，需手動重新驗證／確認停止。
+
+可辨識狀態包含 DISCONNECTED、CONNECTING、CONNECTED—VERIFYING、CI76 VERIFIED、PORT BUSY、IDENTITY MISMATCH、TIMEOUT / REMOVED。
+
+## 測試與 GUI 擷取
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m compileall -q .
+```
+
+實際 Windows 螢幕先設定指定解析度與縮放，再執行：
+
+```powershell
+.\.venv\Scripts\python.exe tools\layout_smoke.py --screen 1920x1080 --scale 125
+.\.venv\Scripts\python.exe tools\layout_smoke.py --screen 1366x768 --scale 100
+.\.venv\Scripts\python.exe tools\layout_smoke.py --screen 1280x800 --scale 100
+```
+
+工具使用暫存偏好並停用自動連線，不開 UART；擷取兩頁、含明確標示的合成 COM 選單、Tooltip 及 JSON 測量。Windows 下會核對實際解析度／device pixel ratio，不符則拒絕當成該條件的截圖。
+
+目前交付的 `qa_captures/Linux_OFFSCREEN_*` 是實際 Linux Qt 離屏截圖；縮放由 Qt 模擬。**不是 Windows 實機驗收證據**。Windows 兩頁／解析度／DPI、真實 COM hover 與 Tooltip、CI76 硬體通訊皆尚未驗證。完整紀錄見 `qa_reports/TEST_REPORT.md`、`QA_RESULTS.md`。
+
+## 保留的安全限制
+
+- FW 0x0B01 未證實 MCU UART 失聯自停；原有 PC 端最長 2 秒限制不等同硬體保護。I1、0 A、Esc 均不能取代獨立硬體馬達斷電。
+- 學習是會移動馬達的操作，仍需原有確認與安全治具。未以自動測試觸發實體動作。
+- 限流不是固定輸出電流、實測推力或 RPM；不應以身體阻擋推桿測試。
+- 「寫入（暫存）」及讀回成功不代表 Flash 斷電保存已驗證。
+- Hall/POT 無回授仍可能假學習成功是 MCU 問題，本版未修正；`firmware_review_only` 僅供參考，未修改或建置。
+
+變更摘要見 `CHANGELOG_v018.md` 與 `qa_reports/CHANGESET.md`。

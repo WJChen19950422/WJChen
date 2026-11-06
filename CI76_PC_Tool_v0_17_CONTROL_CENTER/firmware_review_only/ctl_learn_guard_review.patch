@@ -1,0 +1,97 @@
+--- original_2026110405_LAC2_TEST/Core/Src/ctl.c
++++ reference_guard_review/Core/Src/ctl.c
+@@ -260,6 +260,8 @@
+ 					ln.old_mode = PCTL.ln_mode;
+ 					ln.learningmode = 1;
+ 					ln.learnstarttime = HAL_GetTick();
++                    ln.error = 0; // Begin a NEW learn transaction; do not inherit prior failure.
++                    pos.need_learn = 1;
+ 
+ 					// before starting clear
+ 					pos.min = 0;
+@@ -314,7 +316,13 @@
+ 							ln.curtime = 0;
+ 							ln.pos_min = 0;
+ 							ln.pos_max = 0;
++                            pos.need_learn = 1;
++                            sys.errBit0 |= ERR_POS_FEEDBACK;
+ 							testmode = 2;
++                            m1.motor_en = 0;
++                            m1.speCmd = 0;
++                            m1.pwmReq = 0;
++                            m1.pwm_x1024 = 0;
+ 							m1.curCmd = 0;
+ 							pos.softstroke = 0;
+ 							pos.hardstroke = 0;
+@@ -1668,11 +1676,22 @@
+ 						 * 如果 moved 一直不增加，也不能無限退，
+ 						 * 所以加入 LEARN_BACK_MAX_MS 時間保護。
+ 						 */
+-						if ((moved < back_target_cnt) &&
+-								((now - phase_start_time) < LEARN_BACK_MAX_MS))
+-						{
+-								return;
+-						}
++                        if (moved < back_target_cnt)
++                        {
++                            if ((now - phase_start_time) < LEARN_BACK_MAX_MS)
++                            {
++                                return; // Still waiting for actual sensor motion.
++                            }
++                            // FAIL-SAFE: timeout is evidence of lost feedback,
++                            // NOT successful movement to the next phase.
++                            ln.error = 1;
++                            m->speCmd = 0;
++                            m->pwmReq = 0;
++                            m->pwm_x1024 = 0;
++                            learn_phase = LEARN_FAST_TO_LIMIT;
++                            last_step = 0xFF;
++                            return; // Caller terminates learning and sets error flags.
++                        }
+ 
+ 						m->speCmd = 0;
+ 						ln.curtime = now;
+@@ -1776,16 +1795,38 @@
+                     break;
+ 
+                 case 1:
+-                    ln.pos_max = m->pos;
+-                    ln.learnstep = 2;
++                    // IMPORTANT: positive stroke direction is an assumption of
++                    // the existing pos_soft()/pos_memory() implementation.
++                    // Confirm Hall/POT polarity at the bench before release.
++                    if (m->pos <= ln.pos_min || (m->pos - ln.pos_min) < 50)
++                    {
++                        ln.error = 1; // No credible full-travel feedback.
++                    }
++                    else
++                    {
++                        ln.pos_max = m->pos;
++                        ln.learnstep = 2;
++                    }
+                     break;
+ 
+                 case 2:
+                     /*
+-                     * 第二次下極限確認完成。
+-                     * 可選：再次更新 ln.pos_min。
+-                     * 這樣最後的下極限會以最終慢速確認結果為準。
++                     * Final gate: traveled a valid positive stroke AND returned
++                     * close to the previously confirmed lower endpoint.
++                     * 5% (min 20 counts) is an INITIAL REVIEW VALUE ONLY.
++                     * Calibrate separately for Hall/POT and each actuator family.
+                      */
++                    {
++                        int32_t stroke = ln.pos_max - ln.pos_min;
++                        int32_t endpoint_diff = abs(m->pos - ln.pos_min);
++                        int32_t tolerance = stroke / 20;
++                        if (tolerance < 20) tolerance = 20;
++                        if (stroke < 50 || endpoint_diff > tolerance)
++                        {
++                            ln.error = 1;
++                            break;
++                        }
++                    }
+                     ln.pos_min = m->pos;
+ 
+                     pos_soft();

@@ -1,0 +1,77 @@
+--- v017/hud_widgets.py
++++ v018/hud_widgets.py
+@@ -1,4 +1,4 @@
+-"""Neon HUD-inspired *presentation* widgets for the CI76 live Demo.
++"""Midnight Tech Blue presentation widgets for the CI76 live Demo.
+ 
+ All displayed amperes are supplied by the existing CI76 UART protocol.
+ The display contains measured current and a user-configured limit only.
+@@ -8,12 +8,13 @@
+ from PySide6.QtCore import Qt, QRectF, QPointF, QSize
+ from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPolygonF, QBrush
+ from PySide6.QtWidgets import QWidget
++from theme import COLORS
+ 
+-CYAN = QColor('#53B8B0')
+-MINT = QColor('#8ABEB0')
+-MUTED = QColor('#6F9BA3')
+-DARK = QColor('#061217')
+-AMBER = QColor('#D7B56D')
++CYAN = QColor(COLORS['telemetry'])
++MINT = QColor(COLORS['ok'])
++MUTED = QColor(COLORS['secondary'])
++DARK = QColor(COLORS['app'])
++AMBER = QColor(COLORS['warn'])
+ 
+ 
+ class HudRingDial(QWidget):
+@@ -45,14 +46,14 @@
+         cx, cy = w * 0.30, h * 0.52
+         r = min(w * 0.24, h * 0.38, 106.0)
+         rect = QRectF(cx-r, cy-r, 2*r, 2*r)
+-        p.setPen(QPen(QColor('#234450'), 9, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
++        p.setPen(QPen(QColor(COLORS['border']), 9, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+         p.drawArc(rect, 220*16, -260*16)
+         for n in range(27):
+             angle = math.radians(220 - n*10)
+             major = n % 5 == 0
+             inside = r - (16 if major else 10)
+             outside = r - 4
+-            p.setPen(QPen(QColor('#70BEB9' if major else '#345D68'), 1.7 if major else 1))
++            p.setPen(QPen(QColor(COLORS['secondary'] if major else COLORS['border']), 1.7 if major else 1))
+             p.drawLine(QPointF(cx + inside*math.cos(angle), cy - inside*math.sin(angle)),
+                        QPointF(cx + outside*math.cos(angle), cy - outside*math.sin(angle)))
+         if self._value is not None:
+@@ -62,25 +63,27 @@
+             p.drawArc(rect, 220*16, round(-260*16*fraction))
+             angle = math.radians(220-260*fraction)
+             endpoint = QPointF(cx+(r-24)*math.cos(angle), cy-(r-24)*math.sin(angle))
+-            p.setPen(QPen(QColor('#D6F5F0'), 2.7))
++            p.setPen(QPen(QColor(COLORS['text']), 2.7))
+             p.drawLine(QPointF(cx, cy), endpoint)
+             p.setBrush(CYAN)
+             p.drawEllipse(QPointF(cx, cy), 4.5, 4.5)
+-        p.setPen(QColor('#8FAFBB'))
++        p.setPen(MUTED)
+         p.setFont(QFont('Segoe UI', 8))
+         p.drawText(QRectF(cx-r, cy+r*.61, r, 22), Qt.AlignmentFlag.AlignLeft, '0 A')
+         p.drawText(QRectF(cx, cy+r*.61, r, 22), Qt.AlignmentFlag.AlignRight, f'{self._maximum:g} A')
+         x = w * 0.58
+         right = max(60., w-x-5)
+-        p.setPen(QColor('#99B9C5'))
++        p.setPen(MUTED)
+         p.setFont(QFont('Segoe UI', 9, QFont.Weight.DemiBold))
+-        p.drawText(QRectF(x, h*.23, right, 22), Qt.AlignmentFlag.AlignLeft, self.caption)
++        # Wrap captions instead of clipping them on smaller displays.
++        p.drawText(QRectF(x, h*.18, right, h*.18),
++                   Qt.AlignmentFlag.AlignLeft | Qt.TextFlag.TextWordWrap, self.caption)
+         p.setPen(CYAN if self._value is not None else MUTED)
+         p.setFont(QFont('Segoe UI', 29 if w>410 else 23, QFont.Weight.Bold))
+         value_text = '—' if self._value is None else f'{self._value:.2f}'
+         p.drawText(QRectF(x, h*.36, right, 60),
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, f'{value_text} A')
+-        p.setPen(QColor('#7897A6'))
++        p.setPen(MUTED)
+         p.setFont(QFont('Segoe UI', 9))
+         p.drawText(QRectF(x, h*.67, right, 26),
+                    Qt.AlignmentFlag.AlignLeft, f'RANGE   0.00 – {self._maximum:.2f} A')

@@ -1,0 +1,2 @@
+Command: python -m compileall -q .
+Exit status: 0

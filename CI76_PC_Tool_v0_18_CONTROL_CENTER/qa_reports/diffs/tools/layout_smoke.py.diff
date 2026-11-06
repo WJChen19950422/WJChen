@@ -1,0 +1,122 @@
+--- v017/tools/layout_smoke.py
++++ v018/tools/layout_smoke.py
+@@ -1,45 +1,82 @@
+-r"""GUI layout screenshots for both CI76 tabs, without connecting UART.
++"""Real Qt captures without UART. Windows evidence requires the actual display/DPI.
+ 
+-From a Windows PowerShell opened at the project folder:
+-  .\.venv\Scripts\python.exe tools\layout_smoke.py
+-Optional CI offscreen mode:
+-  .\.venv\Scripts\python.exe tools\layout_smoke.py --offscreen
++Windows: python tools/layout_smoke.py --screen 1920x1080 --scale 125
++Linux QA: python tools/layout_smoke.py --offscreen --screen 1920x1080 --scale 125
++The latter is explicitly named Linux_OFFSCREEN, never Windows acceptance evidence.
+ """
+ from __future__ import annotations
++import argparse
++import json
+ import os
++from pathlib import Path
++import platform
+ import sys
+-from pathlib import Path
++import tempfile
+ 
+-if '--offscreen' in sys.argv:
+-    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+-PROJECT_DIR = Path(__file__).resolve().parents[1]
+-sys.path.insert(0, str(PROJECT_DIR))
+-from PySide6.QtWidgets import QApplication
+-from PySide6.QtCore import QTimer
+-from main import CI76Window
++parser = argparse.ArgumentParser(description=__doc__)
++parser.add_argument('--offscreen', action='store_true')
++parser.add_argument('--screen', default='1366x768')
++parser.add_argument('--scale', type=int, choices=(100,125), default=100)
++parser.add_argument('--output', type=Path, default=Path(__file__).resolve().parents[1]/'qa_captures')
++args = parser.parse_args()
++width,height = map(int,args.screen.lower().split('x'))
++if args.offscreen:
++    os.environ['QT_QPA_PLATFORM']='offscreen'
++    os.environ['QT_SCALE_FACTOR']=str(args.scale/100)
++PROJECT_DIR=Path(__file__).resolve().parents[1]
++sys.path.insert(0,str(PROJECT_DIR))
++from PySide6.QtWidgets import QApplication, QToolTip
++from PySide6.QtCore import QSettings, QPoint
++from PySide6.QtGui import QGuiApplication
++from PySide6 import __version__ as qt_version
++import main
++from eventlog import EventLog
++from settings_store import SettingsStore
+ 
+-app = QApplication(sys.argv)
+-win = CI76Window()
+-win.resize(1260, 840)
+-win.show()
+-app.processEvents()
+-
+-def save_tabs():
+-    for idx, file_name in enumerate(('CI76_v0_17_page1.png','CI76_v0_17_page2.png')):
+-        win.tabs.setCurrentIndex(idx)
+-        app.processEvents()
+-        path = PROJECT_DIR / file_name
+-        if win.grab().save(str(path)):
+-            print('Saved', path)
+-        else:
+-            print('Screenshot failed:', path)
+-        print('Tab', idx, 'Window', win.width(), 'x', win.height())
+-        if idx == 0:
+-            print('Page1 vertical-scroll range:', win.main_scroll.verticalScrollBar().maximum())
+-        else:
+-            print('Demo vertical-scroll range:', win.demo_tab.verticalScrollBar().maximum())
++app=QApplication([])
++screen=app.primaryScreen()
++windows_evidence=platform.system()=='Windows' and not args.offscreen
++if windows_evidence:
++    actual_size=screen.size()*screen.devicePixelRatio()
++    if (round(actual_size.width()),round(actual_size.height())) != (width,height) or abs(screen.devicePixelRatio()-args.scale/100)>.02:
++        raise SystemExit('Set the actual Windows display resolution/scaling first; capture refused.')
++args.output.mkdir(parents=True,exist_ok=True)
++with tempfile.TemporaryDirectory(prefix='ci76-visual-') as temp:
++    main.EventLog=lambda: EventLog(Path(temp)/'logs')
++    store=SettingsStore(QSettings(str(Path(temp)/'prefs.ini'),QSettings.Format.IniFormat))
++    win=main.CI76Window(settings_store=store)
++    prefix='' if windows_evidence else f'{platform.system()}_OFFSCREEN_' if args.offscreen else f'{platform.system()}_'
++    tag=f'{args.screen.split("x")[0]}_{args.scale}'
++    win.resize(round(width/(args.scale/100)),round(height/(args.scale/100))-48)
++    win.show()
++    for _ in range(5): app.processEvents()
++    report=dict(platform=platform.platform(),pyside=qt_version,windows_acceptance=windows_evidence,
++                requested_screen=args.screen,scale_percent=args.scale,device_pixel_ratio=win.devicePixelRatioF(),
++                window_logical=[win.width(),win.height()],states='DISCONNECTED, no UART opened',captures=[])
++    for index in range(2):
++        win.tabs.setCurrentIndex(index)
++        for _ in range(5): app.processEvents()
++        name=f'{prefix}CI76_v0_18_page{index+1}_{tag}.png'
++        if not win.grab().save(str(args.output/name)): raise RuntimeError('Screenshot failed')
++        scroll=win.main_scroll if index==0 else win.demo_tab
++        report['captures'].append(dict(file=name,vertical_scroll=scroll.verticalScrollBar().maximum(),
++            horizontal_scroll=scroll.horizontalScrollBar().maximum()))
++    win.tabs.setCurrentIndex(0)
++    # Synthetic selector entries test rendering only, never used for a connection.
++    win.ports.clear()
++    win.ports.addItem('UI QA ONLY — COM3 · USB Serial (not connected)','')
++    win.ports.addItem('UI QA ONLY — COM9 · USB Serial (not connected)','')
++    win.ports.showPopup(); app.processEvents()
++    popup=win.ports.view().window()
++    popup.grab().save(str(args.output/f'{prefix}COM_popup_{tag}.png'))
++    win.ports.hidePopup()
++    QToolTip.showText(win.motor_speed.mapToGlobal(QPoint(0,0)),win.motor_speed.toolTip(),win.motor_speed)
++    app.processEvents()
++    for widget in app.topLevelWidgets():
++        if widget.metaObject().className()=='QTipLabel':
++            widget.grab().save(str(args.output/f'{prefix}Tooltip_{tag}.png'))
++    QToolTip.hideText()
++    report['popup']='Synthetic QA entries, rendered Qt popup; no serial connection'
++    (args.output/f'{prefix}capture_{tag}.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
++    print(json.dumps(report,ensure_ascii=False,indent=2))
+     win.close()
+-    app.quit()
+-
+-QTimer.singleShot(400, save_tabs)
+-raise SystemExit(app.exec())

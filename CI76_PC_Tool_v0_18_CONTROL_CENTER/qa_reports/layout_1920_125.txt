@@ -1,0 +1,30 @@
+Fontconfig error: No writable cache directories
+This plugin does not support raise()
+This plugin does not support grabbing the keyboard
+This plugin does not support raise()
+{
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "pyside": "6.12.0",
+  "windows_acceptance": false,
+  "requested_screen": "1920x1080",
+  "scale_percent": 125,
+  "device_pixel_ratio": 1.25,
+  "window_logical": [
+    1536,
+    816
+  ],
+  "states": "DISCONNECTED, no UART opened",
+  "captures": [
+    {
+      "file": "Linux_OFFSCREEN_CI76_v0_18_page1_1920_125.png",
+      "vertical_scroll": 0,
+      "horizontal_scroll": 0
+    },
+    {
+      "file": "Linux_OFFSCREEN_CI76_v0_18_page2_1920_125.png",
+      "vertical_scroll": 0,
+      "horizontal_scroll": 0
+    }
+  ],
+  "popup": "Synthetic QA entries, rendered Qt popup; no serial connection"
+}

@@ -1,0 +1,769 @@
+--- v017/main.py
++++ v018/main.py
+@@ -1,4 +1,4 @@
+-"""MOTECK CI76 Configuration Tool v0.17 CONTROL CENTER (LAB).
++"""MOTECK CI76 Configuration Tool v0.18 CONTROL CENTER (LAB).
+ Experimental time-limited host-controlled jogging for unmodified 0x0B01 firmware.
+ A physical independent motor-power cutoff is MANDATORY; I1 is not E-stop.
+ """
+@@ -30,112 +30,37 @@
+ from dial import CurrentDial
+ from hud_widgets import HudRingDial
+ 
+-# GPU-control-center inspired palette. Branding uses text, not a fabricated corporate logo.
+-STYLESHEET = r'''
+-QMainWindow, QWidget#centralRoot { background-color:#080F18; }
+-QWidget { color:#DFE8F3;
+-  font-family:"Microsoft JhengHei", "Segoe UI", sans-serif; font-size:9pt; }
+-QFrame#brandBar { background:#101E2B; border:1px solid #1E3A4A; border-radius:12px; }
+-QLabel#brandIcon { background:#12A3A0; color:#07141A; font:800 16pt "Segoe UI";
+-  border-radius:9px; padding:0; }
+-QLabel#brandWord { color:#F1F7FA; font:800 16pt "Segoe UI"; letter-spacing:2px; }
+-QLabel#brandDetail { color:#8FA9BC; font:9pt "Segoe UI"; }
+-QLabel#buildTag { color:#74C9C2; font:600 9pt "Segoe UI"; }
+-QLabel#heroTitle { color:#E9F3F8; font:700 11pt "Segoe UI"; }
+-QGroupBox { background:#121E2B; border:1px solid #294051; border-radius:10px;
+-  margin-top:14px; padding:10px 9px 8px; font-weight:600; }
+-QGroupBox::title { subcontrol-origin:margin; left:12px; top:0px;
+-  padding:1px 7px; color:#7ED2CE; background:#121E2B; }
+-QLabel { background-color:transparent; }
+-QPushButton { color:#D7E7F0; background:#1B2D3B; border:1px solid #375368;
+-  border-radius:7px; padding:5px 11px; min-height:25px; }
+-QPushButton:hover { background:#263E4F; border-color:#5B939A; }
+-QPushButton:pressed { background:#134B53; }
+-QPushButton:disabled { background:#14202B; color:#657C8B; border-color:#233645; }
+-QPushButton#primary { color:#07191B; background:#5ED0C8; border:1px solid #5ED0C8; font-weight:700; }
+-QPushButton#primary:hover { background:#93E4DC; }
+-QPushButton#stopButton { color:#FFE5E5; background:#923B4B; border:1px solid #CF7381; font-weight:700; }
+-QPushButton#stopButton:hover { background:#AE4C5C; }
+-QPushButton#stopButton:disabled { background:#34272F; color:#82707A; border-color:#47313A; }
+-QComboBox, QSpinBox, QDoubleSpinBox { background:#0B1924; color:#E3F0F4;
+-  border:1px solid #3A5967; border-radius:7px; padding:4px 8px; min-height:24px;
+-  selection-background-color:#167A80; }
+-QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled { background:#14212C; color:#617989; border-color:#253945; }
+-QComboBox::drop-down { border:0; width:24px; }
+-QComboBox QAbstractItemView { color:#E4F2F5; background:#10212D; border:1px solid #42636D;
+-  selection-background-color:#1B6670; }
+-QCheckBox { color:#B7CDDA; spacing:7px; }
+-QCheckBox::indicator { width:15px; height:15px; }
+-QCheckBox::indicator:checked { background:#1A9999; border:1px solid #71DAD0; border-radius:4px; }
+-QCheckBox::indicator:unchecked { background:#0D1D29; border:1px solid #577382; border-radius:4px; }
+-QTabWidget::pane { border:1px solid #294051; border-radius:9px; background:#0C1722; top:-1px; }
+-QTabBar::tab { padding:9px 20px; color:#97B5C4; background:#142330;
+-  border:1px solid #294354; border-bottom:none; min-width:130px; }
+-QTabBar::tab:selected { color:#B9FFF6; background:#193642; border-top:3px solid #45BDB9; font-weight:700; }
+-QTabBar::tab:hover { background:#1A3441; }
+-QProgressBar { border:1px solid #345263; background:#0A1B28;
+-  border-radius:5px; min-height:10px; max-height:10px; }
+-QProgressBar::chunk { background:#3FB9B2; border-radius:4px; }
+-QSlider::groove:horizontal { background:#25404B; border-radius:4px; height:8px; }
+-QSlider::sub-page:horizontal { background:#40AFA9; border-radius:4px; }
+-QSlider::handle:horizontal { background:#C8F4EC; border:2px solid #4CBDB7;
+-  width:16px; margin:-7px 0; border-radius:9px; }
+-QPlainTextEdit { color:#BEE4E3; background:#050F19; border:1px solid #294454;
+-  border-radius:7px; font:9pt Consolas; }
+-QWidget#settingsPage, QWidget#settingsContent, QScrollArea, QScrollArea QWidget#qt_scrollarea_viewport { background:#0C1722; border:0; }
+-QScrollBar:vertical { background:#101D29; width:10px; border:0; }
+-QScrollBar::handle:vertical { background:#345B67; border-radius:5px; min-height:28px; }
+-QScrollBar:horizontal { background:#101D29; height:10px; border:0; }
+-QScrollBar::handle:horizontal { background:#345B67; border-radius:5px; min-width:28px; }
+-QStatusBar { color:#8FBCC5; background:#0D1B28; border-top:1px solid #284556; }
+-QToolTip { color:#D9EFEB; background-color:#162B38; border:1px solid #447D84;
+-  border-radius:5px; padding:6px; opacity:245; }
+-QMessageBox { background:#0E1C28; }
+-'''
+-
+-HUD_STYLESHEET = r'''
+-/* Demo cards share the brand palette with the overall dark control center. */
+-QWidget#hudPage { background-color:#05090D; color:#C8DADE; }
+-QWidget#hudPage QLabel { color:#C8DADE; background-color:transparent; }
+-QWidget#hudPage QLabel#hudHeading { color:#67C7C2; font:700 17pt "Segoe UI"; }
+-QWidget#hudPage QLabel#hudCaption { color:#849FA6; font:9pt "Segoe UI"; }
+-QWidget#hudPage QLabel#hudNum { color:#C9F0EA; font:700 21pt "Segoe UI"; }
+-QWidget#hudPage QLabel#hudStatus { color:#A2D4C7; font:600 9pt "Segoe UI"; }
+-QFrame#hudPanel { background-color:#0B151A; border:1px solid #26545B; border-radius:6px; }
+-QFrame#hudStatusPanel { background-color:#0A1318; border:1px solid #23464D; border-radius:5px; }
+-QWidget#hudPage QPushButton { background-color:#10262A; color:#BCE9E2; border:1px solid #2D6C6E;
+-                              border-radius:5px; padding:5px 12px; min-height:24px; font-weight:600; }
+-QWidget#hudPage QPushButton:hover { background-color:#193A3E; }
+-QWidget#hudPage QPushButton:disabled { background-color:#141E22; color:#72888D; border-color:#23373B; }
+-QWidget#hudPage QComboBox, QWidget#hudPage QDoubleSpinBox {
+-  background-color:#111F24; color:#E3F3F1; border:1px solid #345E64; border-radius:4px;
+-  padding:4px 8px; min-height:24px; }
+-QWidget#hudPage QComboBox QAbstractItemView { background:#14272C; color:#DDEEEB; }
+-QWidget#hudPage QCheckBox { color:#B0CCC9; spacing:7px; }
+-QWidget#hudPage QSlider::groove:horizontal { background-color:#294148; height:8px; border-radius:4px; }
+-QWidget#hudPage QSlider::sub-page:horizontal { background-color:#419F9C; border-radius:4px; }
+-QWidget#hudPage QSlider::handle:horizontal { background-color:#D2E4E0; border:2px solid #5EB6AE;
+-                                            width:18px; margin:-7px 0; border-radius:10px; }
+-QWidget#hudPage QProgressBar { background-color:#1B3036; border:1px solid #30565E;
+-                               height:13px; border-radius:3px; }
+-QWidget#hudPage QProgressBar::chunk { background-color:#4DAD9F; border-radius:2px; }
+-'''
++# Shared theme is applied by CI76Window too, including script/test entrypoints.
++from theme import STYLESHEET, apply_theme, configure_port_popup, brand_label
++from settings_store import SettingsStore, PortIdentity, match_port
++
+ GROUP_LAYOUT = (('電壓','回生','電流'), ('速度','位置'))
+ LIVE_FIELDS = (('motor','推桿狀態'), ('uart','UART 模式'),
+                ('sensor','感測器'), ('errors','錯誤碼'))
+ 
+ GAUGES = (
+-    ('current', '馬達電流（估算）', 'A', 10.0, '#0E8CC5'),
+-    ('position', '目前位置', '%', 100.0, '#0C9C7B'),
++    ('current', '馬達電流（估算）', 'A', 10.0, '#40D3BF'),
++    ('position', '目前位置', '%', 100.0, '#3BA7FF'),
+ )
+ 
+ 
+ class CI76Window(QMainWindow):
+-    def __init__(self):
++    def __init__(self, *, settings_store=None):
+         super().__init__()
+-        self.setWindowTitle('MOTECK | CI76 Control Center v0.17 LAB')
+-        self.resize(1260, 840)
+-        self.setMinimumSize(980, 690)
++        apply_theme()
++        self.preferences = settings_store or SettingsStore()
++        self._port_inventory = []
++        self._connecting_port = None
++        self._connection_pending = False
++        self._startup_attempted = False
++        self._user_disconnected = False
++        self._connection_failure = None
++        self._link_stale = False
++        self._current_draft_dirty = False
++        self._applying_group = False
++        self.setWindowTitle('MOTECK | CI76 Control Center v0.18 LAB')
++        self.resize(1360, 820)
++        self.setMinimumSize(1100, 660)
+         self.connected = False
+         self.pending = 0
+         self._foreground_pending = False
+@@ -186,25 +111,19 @@
+         central.setObjectName('centralRoot')
+         self.setCentralWidget(central)
+         root = QVBoxLayout(central)
+-        root.setContentsMargins(14, 10, 14, 8)
+-        root.setSpacing(6)
++        root.setContentsMargins(10, 6, 10, 4)
++        root.setSpacing(4)
+ 
+         # Text-based MOTECK brand lockup; the accent colors are a design
+         # treatment, not a claim that this is an official corporate logo.
+         brand = QFrame()
+         brand.setObjectName('brandBar')
+         brand_row = QHBoxLayout(brand)
+-        brand_row.setContentsMargins(14, 9, 14, 9)
++        brand_row.setContentsMargins(12, 5, 12, 5)
+         brand_row.setSpacing(12)
+-        brand_icon = QLabel('M')
+-        brand_icon.setObjectName('brandIcon')
+-        brand_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+-        brand_icon.setFixedSize(40, 40)
+-        brand_row.addWidget(brand_icon)
+         brand_names = QVBoxLayout()
+         brand_names.setSpacing(1)
+-        brand_word = QLabel('MOTECK')
+-        brand_word.setObjectName('brandWord')
++        brand_word = brand_label()
+         brand_names.addWidget(brand_word)
+         brand_detail = QLabel('CI76  /  MOTION CONTROL SYSTEMS')
+         brand_detail.setObjectName('brandDetail')
+@@ -217,16 +136,17 @@
+         hero.setObjectName('heroTitle')
+         hero.setAlignment(Qt.AlignmentFlag.AlignRight)
+         right_head.addWidget(hero)
+-        tag = QLabel('LAB BUILD  0.17   •   UART 115200 / 8N1   •   PROTOCOL 251110')
++        tag = QLabel('LAB v0.18   •   UART 115200 / 8N1   •   Protocol 251110')
+         tag.setObjectName('buildTag')
+         tag.setAlignment(Qt.AlignmentFlag.AlignRight)
+         right_head.addWidget(tag)
+         brand_row.addLayout(right_head)
++        self.header_firmware = QLabel('FW —')
++        self.header_firmware.setObjectName('brandDetail')
++        brand_row.addWidget(self.header_firmware)
+         root.addWidget(brand)
+ 
+         tools = QHBoxLayout()
+-        tools.addWidget(QLabel('DEVICE CONFIGURATION   /   LAB TELEMETRY'))
+-        tools.addStretch()
+         config_load = QPushButton('載入 .config')
+         config_load.setToolTip('僅載入到畫面，不會自動寫入 CI76')
+         config_load.clicked.connect(self.load_config)
+@@ -235,26 +155,30 @@
+         config_save.clicked.connect(self.save_config)
+         tools.addWidget(config_load)
+         tools.addWidget(config_save)
+-        root.addLayout(tools)
+ 
+         conn = QGroupBox('COM 連線')
+         conn_row = QHBoxLayout(conn)
+         conn_row.setContentsMargins(10, 6, 10, 6)
+         conn_row.setSpacing(6)
+         self.ports = QComboBox()
++        configure_port_popup(self.ports)
+         self.refresh_ports()
+         self.refresh_btn = QPushButton('掃描')
+         self.refresh_btn.clicked.connect(self.refresh_ports)
+         self.connect_btn = QPushButton('連線')
+         self.connect_btn.setObjectName('primary')
+         self.connect_btn.clicked.connect(self.toggle_connection)
++        self.auto_connect_check = QCheckBox('啟動時自動連線')
++        self.auto_connect_check.setChecked(self.preferences.auto_connect)
++        self.auto_connect_check.setToolTip('預設關閉；僅對唯一符合上次已驗證紀錄的裝置嘗試一次，並先讀取 Device Code')
++        self.auto_connect_check.toggled.connect(self.preferences.set_auto_connect)
+         self.connection_label = QLabel('● 未連線')
+         self.connection_label.setStyleSheet('color:#D68C95;font-weight:700')
+         conn_row.addWidget(QLabel('Port'))
+         conn_row.addWidget(self.ports, 1)
+-        conn_row.addWidget(QLabel('115200 / 8N1'))
+         conn_row.addWidget(self.refresh_btn)
+         conn_row.addWidget(self.connect_btn)
++        conn_row.addWidget(self.auto_connect_check)
+         conn_row.addWidget(self.connection_label)
+         root.addWidget(conn)
+ 
+@@ -273,7 +197,7 @@
+             self.poll_period.addItem(f'{ms} ms', ms)
+         self.poll_period.currentIndexChanged.connect(self.poll_period_changed)
+         self.poll_rate = QLabel('電流實際：—')
+-        self.poll_rate.setMinimumWidth(143)
++        self.poll_rate.setMinimumWidth(115)
+         self.poll_rate.setStyleSheet('color:#7ACCC8')
+         for b in (self.identity_btn, self.readall_btn, self.monitor_btn):
+             actions.addWidget(b)
+@@ -282,8 +206,8 @@
+         actions.addWidget(self.poll_rate)
+         self.poll_trace = QCheckBox('記錄輪詢封包')
+         self.poll_trace.setToolTip('50/100ms 自動輪詢時關閉可避免 UART log 每秒大量刷屏')
+-        actions.addWidget(self.poll_trace)
+-        actions.addStretch()
++        tools.insertWidget(0, self.poll_trace)
++        actions.addLayout(tools)
+         root.addLayout(actions)
+ 
+         # Keep the familiar one-page settings screen intact inside its own tab.
+@@ -293,7 +217,7 @@
+         main_tab_layout.setContentsMargins(0, 0, 0, 0)
+         main_tab_layout.setSpacing(5)
+         # One compact cross-column control strip. Never squeeze the monitoring panel.
+-        motor_box = QGroupBox('推桿控制與客戶端診斷（v0B01 僅供內部短時測試）')
++        motor_box = QGroupBox('推桿控制 / 內部安全測試台')
+         motor_layout = QVBoxLayout(motor_box)
+         motor_layout.setContentsMargins(8, 6, 8, 5)
+         motor_layout.setSpacing(2)
+@@ -325,11 +249,9 @@
+         self.motor_feedback = QLabel('需具備 800 ms 失聯停止保護的韌體')
+         self.motor_feedback.setMinimumWidth(130)
+         self.motor_feedback.setStyleSheet('color:#E8B17C;font-size:8pt')
+-        motor_row.addWidget(self.motor_feedback, 1)
+         diagnostic_row = QHBoxLayout()
+         diagnostic_row.setSpacing(7)
+-        diagnostic_row.addWidget(QLabel('DIAGNOSTICS  /  現場檢測'))
+-        diagnostic_row.addStretch()
++        diagnostic_row.addWidget(self.motor_feedback, 1)
+         self.diagnostic_btn = QPushButton('擷取診斷')
+         self.diagnostic_btn.clicked.connect(lambda: self.submit('diagnostics'))
+         diagnostic_row.addWidget(self.diagnostic_btn)
+@@ -340,10 +262,8 @@
+         self.logs_btn = QPushButton('Log 資料夾')
+         self.logs_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.event_store.folder))))
+         diagnostic_row.addWidget(self.logs_btn)
+-        motor_layout.addLayout(diagnostic_row)
+         warning = QLabel('⚠ FW 0x0B01：每次最多 2 秒（僅 PC 端計時）。斷線可能無法自停；I1 不是緊急停止。請備獨立硬體斷電。')
+-        warning.setStyleSheet('color:#DAA66F;font-size:8pt;')
+-        learn_row = QHBoxLayout()
++        motor_box.setToolTip(warning.text())
+         self.learn_btn = QPushButton('開始行程學習')
+         self.learn_btn.setToolTip('UART 0x02/01；學習將自行走完整個行程，需具備獨立硬體停止設備')
+         self.learn_btn.clicked.connect(self.request_learning_start)
+@@ -351,11 +271,12 @@
+         self.learn_abort_btn.clicked.connect(self.request_learning_abort)
+         self.learn_feedback = QLabel('尚未開始行程學習')
+         self.learn_feedback.setStyleSheet('color:#93B9C8;font-size:8pt')
+-        learn_row.addWidget(self.learn_btn)
+-        learn_row.addWidget(self.learn_abort_btn)
+-        learn_row.addWidget(self.learn_feedback, 1)
+-        motor_layout.addLayout(learn_row)
+-        motor_layout.addWidget(warning)
++        motor_row.addWidget(self.learn_btn)
++        motor_row.addWidget(self.learn_abort_btn)
++        motor_row.addWidget(self.learn_feedback, 1)
++        self.learn_feedback.setWordWrap(True)
++        self.motor_feedback.setToolTip(warning.text())
++        motor_layout.addLayout(diagnostic_row)
+         main_tab_layout.addWidget(motor_box)
+         self.stop_shortcut = QShortcut(QKeySequence('Esc'), self)
+         self.stop_shortcut.activated.connect(self.request_stop)
+@@ -444,10 +365,7 @@
+             bar.setRange(0, 1000)
+             bar.setValue(0)
+             bar.setTextVisible(False)
+-            bar.setStyleSheet(
+-                'QProgressBar{background:#0D2430;border:0;border-radius:5px;min-height:10px;max-height:10px;}'
+-                f'QProgressBar::chunk{{background:{color};border-radius:5px;}}'
+-            )
++            bar.setObjectName('positionBar' if key == 'position' else 'telemetryBar')
+             meter_layout.addLayout(meter_header)
+             meter_layout.addWidget(bar)
+             self.live[key] = display
+@@ -539,13 +457,13 @@
+         self.console.setVisible(False)
+         self.statusBar().showMessage('MOTECK CI76 · LAB 版  |  參數以 MCU 讀回為準  |  未改變既有馬達安全限制  |  Flash 保存待驗證')
+         self.set_connected(False)
++        QTimer.singleShot(0, self._startup_connection)
+ 
+     def _build_demo_tab(self):
+         """Reference-photo-inspired cockpit HUD; existing UART logic is unchanged."""
+         page = QWidget()
+         page.setObjectName('hudPage')
+         page.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+-        page.setStyleSheet(HUD_STYLESHEET)
+         root = QVBoxLayout(page)
+         root.setContentsMargins(13, 11, 13, 10)
+         root.setSpacing(8)
+@@ -567,9 +485,9 @@
+         header.addLayout(heading_col, 1)
+         header.addWidget(QLabel('DISPLAY'), 0, Qt.AlignmentFlag.AlignVCenter)
+         self.demo_view_combo = QComboBox()
+-        self.demo_view_combo.addItem('雙儀表＋橫條', 'both')
+-        self.demo_view_combo.addItem('僅橫條', 'bar')
+-        self.demo_view_combo.addItem('儀表盤', 'dial')
++        self.demo_view_combo.addItem('Bar + Gauge', 'both')
++        self.demo_view_combo.addItem('Bar only', 'bar')
++        self.demo_view_combo.addItem('Gauge only', 'dial')
+         self.demo_view_combo.currentIndexChanged.connect(self._update_demo_view)
+         header.addWidget(self.demo_view_combo)
+         root.addLayout(header)
+@@ -611,7 +529,10 @@
+         right.setSpacing(1)
+         self.hud_limit_dial = HudRingDial('CURRENT LIMIT SETPOINT')
+         self.hud_limit_dial.setReading(1.0)
+-        right.addWidget(self.hud_limit_dial, 1)
++        # Compatibility readout model; only actual current needs a gauge.
++        self.hud_limit_dial.setParent(right_card)
++        self.hud_limit_dial.hide()
++        right.addWidget(QLabel('CURRENT LIMIT CONTROL / 最大允許電流'))
+         self.demo_target = QLabel('1.00 A')
+         self.demo_target.setObjectName('hudNum')
+         self.demo_target.setAlignment(Qt.AlignmentFlag.AlignCenter)
+@@ -671,7 +592,8 @@
+         self.demo_write_status.setObjectName('hudCaption')
+         self.demo_write_status.setWordWrap(True)
+         control_layout.addWidget(self.demo_write_status)
+-        root.addWidget(controls, 0)
++        right.addWidget(controls)
++        right.addStretch()
+ 
+         status_row = QHBoxLayout()
+         status_row.setSpacing(8)
+@@ -706,10 +628,6 @@
+         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+         scroll.setWidget(page)
+-        scroll.setStyleSheet('QScrollArea {background-color:#05090D;border:0;} QScrollArea QWidget#qt_scrollarea_viewport {background-color:#05090D;} '
+-                             'QScrollBar:vertical{background:#101D22;width:11px;} '
+-                             'QScrollBar::handle:vertical{background:#2D666B;border-radius:5px;min-height:25px;}')
+-        scroll.viewport().setStyleSheet('background-color:#05090D;')
+         return scroll
+ 
+     def _update_demo_view(self, *_):
+@@ -719,7 +637,7 @@
+         # The dial shows a large right-hand number; prevent duplicate
+         # digital values in mixed/dial modes, retain the label for bar-only.
+         self.demo_actual.setVisible(mode == 'bar')
+-        self.demo_target.setVisible(False)  # Limit dial always supplies the right-hand digital readout.
++        self.demo_target.setVisible(True)
+ 
+     def request_clear_faults(self):
+         if not (self.connected and self.identity_verified) or self.motion_active or self.learning_requested:
+@@ -829,7 +747,7 @@
+ 
+     def _flush_demo_limit(self):
+         value = self._demo_pending_value
+-        if not (self.connected and self.identity_verified) or self.learning_requested or self.interlock_fault:
++        if not (self.connected and self.identity_verified) or self._link_stale or self.learning_requested or self.interlock_fault:
+             self.demo_update_timer.stop()
+             return
+         if value is None or self._demo_write_inflight or self._foreground_pending:
+@@ -957,13 +875,13 @@
+ 
+     def _render_motion_state(self):
+         bench = self.legacy_fw and self.bench_uart_enabled
+-        available = self.connected and self.identity_verified and (self.motion_supported or bench)
++        available = self.connected and self.identity_verified and not self._link_stale and (self.motion_supported or bench)
+         self.extend_btn.setEnabled(available and not self.stop_pending)
+         self.retract_btn.setEnabled(available and not self.stop_pending)
+         self.motor_speed.setEnabled(available and not self.motion_active)
+         self.motor_speed.setMaximum(100)
+         self.stop_btn.setEnabled(self.connected and self.identity_verified)
+-        self.auto_poll.setEnabled(self.connected and not bool(self.motion_active) and not self.learning_requested)
++        self.auto_poll.setEnabled(self.connected and self.identity_verified and not bool(self.motion_active) and not self.learning_requested)
+         self.uart_mode_btn.setEnabled(self.connected and self.identity_verified and self.legacy_fw
+                                       and not bool(self.motion_active) and not self.stop_pending)
+         self.uart_mode_btn.setText('UART MODE：ON' if self.bench_uart_enabled else 'UART MODE：OFF')
+@@ -989,7 +907,7 @@
+         self.demo_restore_btn.setEnabled(self.connected and self.identity_verified and self.demo_dirty
+                                           and not self.motion_active and not self.learning_requested)
+         can_demo_write = (self.connected and self.identity_verified
+-                          and '電流' in self.group_read_ok and not self.learning_requested)
++                          and not self._link_stale and '電流' in self.group_read_ok and not self.learning_requested)
+         self.demo_slider.setEnabled(can_demo_write)
+         self.demo_target_spin.setEnabled(can_demo_write)
+         self.demo_apply_btn.setEnabled(can_demo_write and not self._demo_write_inflight)
+@@ -1040,7 +958,7 @@
+             self._last_demo_current_ts = None
+ 
+     def _resume_poll(self):
+-        if self.connected and self.auto_poll.isChecked() and not self._foreground_pending:
++        if self.connected and not self._link_stale and self.auto_poll.isChecked() and not self._foreground_pending:
+             self.timer.start(self.poll_period.currentData())
+ 
+     def _update_gauge(self, key, value):
+@@ -1061,10 +979,10 @@
+     @staticmethod
+     def _flag_style(state):
+         styles = {
+-            'unknown': 'background:#172734;color:#8CA9B9;border:1px solid #365062;',
+-            'clear': 'background:#14342F;color:#91D7BE;border:1px solid #286559;',
+-            'power': 'background:#3D252E;color:#FFADAA;border:1px solid #965A66;',
+-            'control': 'background:#3C3423;color:#F1CE8B;border:1px solid #806B47;',
++            'unknown': 'background:#1B293C;color:#94A9BC;border:1px solid #2B3D55;',
++            'clear': 'background:#141E2D;color:#2DCE9B;border:1px solid #2B3D55;',
++            'power': 'background:#141E2D;color:#FF6375;border:1px solid #FF6375;',
++            'control': 'background:#141E2D;color:#FFBD59;border:1px solid #FFBD59;',
+         }
+         return styles[state] + 'border-radius:4px;padding:2px;font-size:8pt;'
+ 
+@@ -1113,15 +1031,16 @@
+     def _create_group(self, group):
+         g = QGroupBox(group + '參數')
+         layout = QVBoxLayout(g)
+-        layout.setContentsMargins(8, 7, 8, 7)
++        layout.setContentsMargins(6, 4, 6, 4)
+         layout.setSpacing(2)
+         fields = QFormLayout()
+         fields.setContentsMargins(0, 0, 0, 0)
+         fields.setHorizontalSpacing(6)
+-        fields.setVerticalSpacing(4)
++        fields.setVerticalSpacing(2)
+         for key in GROUPS[group][3]:
+             label, unit, scale, _lo, _hi = FIELDS[key]
+             edit = QSpinBox() if scale == 1 else QDoubleSpinBox()
++            edit.setObjectName('compactEditor')
+             lower, upper, decimals, step = field_editor_spec(key)
+             if isinstance(edit, QDoubleSpinBox):
+                 edit.setDecimals(decimals)
+@@ -1136,6 +1055,8 @@
+             edit.setEnabled(False)
+             edit.setMinimumWidth(97)
+             self.fields[key] = edit
++            if group == '電流':
++                edit.valueChanged.connect(self._mark_current_draft)
+             fields.addRow(label, edit)
+         layout.addLayout(fields)
+         if group == '電流':
+@@ -1224,32 +1145,96 @@
+     def refresh_ports(self):
+         prev = self.ports.currentData() if hasattr(self, 'ports') else None
+         self.ports.clear()
+-        for p in list_ports.comports():
+-            self.ports.addItem(f'{p.device} · {p.description}', p.device)
++        self._port_inventory = [PortIdentity.from_port(p) for p in list_ports.comports()]
++        for p in self._port_inventory:
++            label = f'{p.device} · {p.description}'
++            if p.serial_number:
++                label += f' · USB {p.serial_number}'
++            self.ports.addItem(label, p.device)
+         if not self.ports.count():
+             self.ports.addItem('沒有 USB-to-UART 裝置', '')
+         pos = self.ports.findData(prev)
+         if pos >= 0:
+             self.ports.setCurrentIndex(pos)
+ 
++    def _connection_state(self, state, detail=''):
++        self.connection_label.setText(state)
++        self.connection_label.setToolTip(detail or state)
++        self.hud_link.setText(state)
++        color = '#2DCE9B' if state == 'CI76 VERIFIED' else '#FFBD59'
++        self.connection_label.setStyleSheet(f'color:{color};font-weight:700')
++        if detail:
++            self.statusBar().showMessage(detail)
++
++    def _startup_connection(self):
++        if self._startup_attempted:
++            return
++        self._startup_attempted = True
++        match, reason = match_port(self.preferences.last_port(), self._port_inventory)
++        if match is None:
++            self._connection_state('DISCONNECTED', reason)
++            return
++        self.ports.setCurrentIndex(self.ports.findData(match.device))
++        if self.preferences.auto_connect and not self._user_disconnected:
++            self._begin_connection()
++
++    def _begin_connection(self):
++        if self.connected or self._connection_pending:
++            return
++        port = self.ports.currentData()
++        if not port:
++            self._connection_state('DISCONNECTED', '沒有可連線的 COM Port；請掃描或手動選取')
++            return
++        self._connecting_port = next((p for p in self._port_inventory if p.device == port), None)
++        self._connection_failure = None
++        self._connection_pending = True
++        self.ports.setEnabled(False)
++        self.refresh_btn.setEnabled(False)
++        self.connect_btn.setEnabled(False)
++        self._connection_state('CONNECTING', f'正在開啟 {port}；尚未驗證設備')
++        self.worker.submit('connect', port)
++
++    def _reject_connection(self, state, reason):
++        # No motion/mode/parameter action is admitted before identity succeeds.
++        # Closing this newly opened, unverified connection is read-only.
++        self._connection_failure = (state, reason)
++        self.identity_verified = False
++        self.set_connected(False)
++        self._connection_pending = True
++        self.connect_btn.setEnabled(False)
++        self.ports.setEnabled(False)
++        self.refresh_btn.setEnabled(False)
++        self._connection_state(state, reason)
++        self.worker.submit('disconnect')
++
+     def set_connected(self, state):
+         self.connected = state
+-        self.connection_label.setText('● 已連線' if state else '● 未連線')
+-        self.hud_link.setText('UART CONNECTED' if state else 'DISCONNECTED')
++        if not state:
++            self.identity_verified = False
++        self._connection_state('CONNECTED—VERIFYING' if state else 'DISCONNECTED')
+         if not state:
+             self.hud_motor_state.setText('NO DATA')
+-        self.connection_label.setStyleSheet('color:#7CD9B3;font-weight:bold' if state
+-                                            else 'color:#DA8C91;font-weight:bold')
+         self.connect_btn.setText('斷線' if state else '連線')
++        self.connect_btn.setEnabled(True)
+         self.ports.setEnabled(not state)
+         self.refresh_btn.setEnabled(not state)
+         for button in (self.identity_btn, self.readall_btn, self.monitor_btn):
+-            button.setEnabled(state)
+-        self.auto_poll.setEnabled(state)
+-        self.poll_period.setEnabled(state)
++            button.setEnabled(state and self.identity_verified)
++        self.auto_poll.setEnabled(state and self.identity_verified)
++        self.poll_period.setEnabled(state and self.identity_verified)
+         self.motion_active = self.motion_active if state else None
+         self.motion_supported = self.motion_supported if state else False
+         if not state:
++            self.timer.stop()
++            self.latest_monitor.clear()
++            self.hud_sensor.setText('UNKNOWN')
++            self.demo_actual.setText('— A')
++            self.demo_current_bar.setValue(0)
++            self.demo_current_dial.setReading(None)
++            self.hud_limit_dial.setReading(None)
++            self.fw_label.setText('—')
++            self.device_label.setText('—')
++            self.header_firmware.setText('FW —')
+             self._last_demo_current_ts = None
+             self.demo_sample_rate.setText('電流實際刷新：—')
+             self.demo_update_timer.stop()
+@@ -1297,6 +1282,8 @@
+                     self.live[k].setText('—（尚未查詢）')
+ 
+     def toggle_connection(self):
++        if self._connection_pending:
++            return
+         if self.connected:
+             if self.learning_requested:
+                 self.request_learning_abort()
+@@ -1314,17 +1301,20 @@
+                 QMessageBox.warning(self, '請先關閉 UART MODE',
+                     '先按「UART MODE：ON」關閉控制模式，確認讀回 OFF 後再斷線。')
+                 return
++            self._user_disconnected = True
+             self.submit('disconnect')
+         else:
+-            port = self.ports.currentData()
+-            if not port:
+-                QMessageBox.warning(self, 'COM Port', '沒有可連線的 COM Port')
+-                return
+-            self.worker.submit('connect', port)
++            self._begin_connection()
+ 
+     def submit(self, action, payload=None):
+         if not self.connected:
+             self.statusBar().showMessage('尚未連線')
++            return
++        if not self.identity_verified and action not in ('identity', 'disconnect'):
++            self.statusBar().showMessage('設備驗證尚未成功；禁止設定與控制')
++            return
++        if self._link_stale and action not in ('identity','disconnect','monitor','motor_stop','learning_abort'):
++            self.statusBar().showMessage('連線資料已失效；請先讀取設備資訊重新驗證。若有動作請先用獨立硬體停止。')
+             return
+         if self.interlock_fault and action not in ('monitor','disconnect'):
+             self.statusBar().showMessage('上一次學習／停止未確認；請實體確認停止並重新連線')
+@@ -1381,13 +1371,25 @@
+                 self.demo_write_status.setText('由第一頁寫入電流參數中；請等待 MCU 讀回確認')
+             self.submit('writegroup', (group, vals))
+ 
+-    def _apply_group(self, group, items):
++    def _mark_current_draft(self, *_):
++        if not self._applying_group:
++            self._current_draft_dirty = True
++
++    def _apply_group(self, group, items, *, preserve_draft=False):
++        keep_draft = group == '電流' and preserve_draft and self._current_draft_dirty
++        self._applying_group = True
+         for key, val in items.items():
+-            self.fields[key].setValue(val)
++            if not keep_draft:
++                self.fields[key].setValue(val)
+             self.last_values[key] = val
++        self._applying_group = False
++        if group == '電流' and not keep_draft:
++            self._current_draft_dirty = False
+         self.group_read_ok.add(group)
+         if group == '電流':
+-            self.limit_slider_info.setText(f'MCU 讀回：{items["current_limit"]:.2f} A')
++            self.limit_slider_info.setText(
++                f'MCU {items["current_limit"]:.2f} A / 本頁草稿保留' if keep_draft
++                else f'MCU 讀回：{items["current_limit"]:.2f} A')
+             self.limit_slider_info.setStyleSheet('color:#76D4C9;font-size:8pt;')
+             self.limit_slider.setEnabled(self.connected)
+             self.demo_slider.setEnabled(self.connected and self.identity_verified and not self.learning_requested)
+@@ -1404,6 +1406,9 @@
+         self.write_buttons[group].setEnabled(self.connected and self.identity_verified)
+ 
+     def on_success(self, action, data):
++        # Ignore delayed telemetry signals after a disconnect, never revive stale values.
++        if not self.connected and action in ('monitor_item', 'monitor_problem', 'monitor'):
++            return
+         if action not in ('connect','disconnect','readgroup_part','group_problem',
+                           'monitor_item','monitor_problem', 'motor_lost', 'motor_autostop',
+                           'learning_stage', 'learning_result', 'learning_abort'):
+@@ -1412,16 +1417,36 @@
+             self.identity_verified = False
+             self.group_read_ok.clear()
+             self.set_connected(True)
++            self._connection_state('CONNECTED—VERIFYING', 'COM 已開啟，正在唯讀查詢 CI76 Device Code')
++            self.connect_btn.setEnabled(False)
+             self.statusBar().showMessage('已連接 COM，讀取設備資訊中…')
+             self.submit('identity')
+         elif action == 'disconnect':
++            self._connection_pending = False
+             self.pending = 0
+             self.set_connected(False)
+             self.statusBar().showMessage('已斷線')
++            if self._connection_failure:
++                self._connection_state(*self._connection_failure)
+         elif action == 'identity':
++            if not self.connected:
++                return
++            if data['device'] != '0x0B01':
++                self._reject_connection('IDENTITY MISMATCH',
++                    f'設備代碼 {data["device"]} 不符 CI76 0x0B01；已要求關閉 COM，未寫入任何參數')
++                return
++            self._connection_pending = False
++            self._link_stale = False
+             self.fw_label.setText(data['version'])
++            self.header_firmware.setText('FW ' + data['version'])
+             self.device_label.setText(data['device'])
+             self.identity_verified = (data['device'] == '0x0B01')
++            self.preferences.remember_verified(self._connecting_port, data['device'])
++            self._connection_state('CI76 VERIFIED', '已確認 CI76 Device Code 0x0B01；尚未寫入任何參數')
++            self.connect_btn.setEnabled(True)
++            for button in (self.identity_btn, self.readall_btn, self.monitor_btn,
++                           self.auto_poll, self.poll_period):
++                button.setEnabled(True)
+             self.motion_supported = firmware_motion_supported(data['version'], data['device'])
+             self.legacy_fw = data['version'] == '0x0B01' and data['device'] == '0x0B01'
+             self.bench_uart_enabled = False
+@@ -1528,7 +1553,7 @@
+             actual_a = float(data['actual_A'])
+             self.demo_verified_limit = actual_a
+             # Update Page 1 ONLY from MCU readback, not a speculative Demo target.
+-            self._apply_group('電流', data['current_group'])
++            self._apply_group('電流', data['current_group'], preserve_draft=True)
+             if self._demo_pending_value is not None and abs(self._demo_pending_value - actual_a) > 0.011:
+                 self.demo_write_status.setText(
+                     f'MCU 已確認 {actual_a:.2f} A；Demo 新目標 {self._demo_pending_value:.2f} A 等待寫入')
+@@ -1564,7 +1589,7 @@
+                 self.demo_dirty = False
+                 self.demo_verified_limit = None
+                 if data['current_group'] is not None:
+-                    self._apply_group('電流', data['current_group'])
++                    self._apply_group('電流', data['current_group'], preserve_draft=True)
+                 self.demo_speed_modified = False
+                 self.demo_write_status.setText('已恢復本次連線開始展示前的限流與速度（讀回一致）')
+                 self.log('DEMO 電流原始參數已還原（僅 MCU RAM，未驗證斷電）')
+@@ -1657,6 +1682,14 @@
+             if cmd == 0x17:
+                 self._reset_error_flags('通訊異常／未知')
+                 self.hud_fault.setText('UART TIMEOUT')
++            if cmd == 0x10:
++                self.latest_monitor.pop('current', None)
++                self._connection_state('TIMEOUT / REMOVED', '電流資料已失效；請檢查 USB / UART 連線')
++            if cmd == 0x12:
++                self.hud_motor_state.setText('UNKNOWN / STALE')
++                self.latest_monitor.pop('motor', None)
++            if cmd == 0x13:
++                self.hud_sensor.setText('UNKNOWN / STALE')
+             for key in keys:
+                 if key == 'motor_time':
+                     self.motor_time_label.setText('—（查詢失敗）')
+@@ -1679,6 +1712,26 @@
+                 self._last_issue_at[cmd] = now
+                 self.log(f'WARN  監控 0x{cmd:02X}：{why}')
+         elif action == 'monitor':
++            if data['failed'] and not data['ok']:
++                # Reuse the existing safe disconnect path. Never auto-restore,
++                # STOP, or toggle UART MODE on an idle monitoring timeout.
++                if not (self.motion_active or self.learning_requested or
++                        self.bench_uart_enabled or self.demo_dirty):
++                    self._reject_connection('TIMEOUT / REMOVED',
++                        '本輪監控全部失敗；資料已失效，請檢查連線後手動重連')
++                    return
++                self._link_stale = True
++                self.timer.stop()
++                self.demo_update_timer.stop()
++                self._demo_pending_value = None
++                self.demo_verified_limit = None
++                self.latest_monitor.clear()
++                self._render_motion_state()
++                for button in self.write_buttons.values():
++                    button.setEnabled(False)
++                self._reset_error_flags('連線失效 / UNKNOWN')
++                self._connection_state('TIMEOUT / REMOVED',
++                    '連線失效；未自動還原或重播設定。若有動作請用獨立硬體停止，再手動讀取設備資訊。')
+             if data['auto'] and time.monotonic() - self._last_telemetry_log > 1.0:
+                 self._last_telemetry_log = time.monotonic()
+                 sample = dict(current_A=self.latest_monitor.get('current'),
+@@ -1702,6 +1755,16 @@
+             self._resume_poll()
+ 
+     def on_error(self, action, message):
++        if action == 'identity' and not self.identity_verified:
++            self._reject_connection('TIMEOUT / REMOVED', 'CI76 設備驗證失敗：' + message)
++            return
++        if action == 'connect':
++            self._connection_pending = False
++            self.set_connected(False)
++            state = 'PORT BUSY' if any(s in message.lower() for s in
++                    ('permission', 'denied', 'busy', 'access', '拒絕')) else 'TIMEOUT / REMOVED'
++            self._connection_state(state, 'COM 開啟失敗：' + message)
++            return
+         if action == 'writegroup' and self._demo_pending_value is None:
+             self.demo_write_status.setText('參數寫入尚未確認：請重新讀取 MCU 電流參數')
+         if action == 'demo_limit':
+@@ -1864,7 +1927,7 @@
+ 
+ def main():
+     app = QApplication(sys.argv)
+-    app.setStyleSheet(STYLESHEET)
++    apply_theme(app)
+     window = CI76Window()
+     window.show()
+     return app.exec()

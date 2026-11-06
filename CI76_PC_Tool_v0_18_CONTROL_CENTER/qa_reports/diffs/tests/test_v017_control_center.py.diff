@@ -1,0 +1,10 @@
+--- v017/tests/test_v017_control_center.py
++++ v018/tests/test_v017_control_center.py
+@@ -12,6 +12,7 @@
+ def test_brand_and_dark_theme_source():
+     text=(ROOT/'main.py').read_text(encoding='utf-8')
+     ast.parse(text)
++    text += (ROOT/'theme.py').read_text(encoding='utf-8')
+     for token in ('MOTECK', 'CI76 CONTROL CENTER', 'QLabel#brandWord',
+                   'QTabWidget::pane', 'QTabBar::tab:selected', 'QToolTip',
+                   'QGroupBox', "self.demo_current_dial = HudRingDial",
