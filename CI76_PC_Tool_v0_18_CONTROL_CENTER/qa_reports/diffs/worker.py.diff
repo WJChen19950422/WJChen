@@ -1,18 +1,20 @@
 --- v017/worker.py
 +++ v018/worker.py
-@@ -50,7 +50,28 @@
+@@ -50,7 +50,36 @@
          self.client = None
          self.running = True
          self._mute_trace = False
 +        self._demo_monitor_config = {}
 +        self._demo_next_sample_at = 0.0
++        self._last_current_received_at = float('-inf')
++        self._demo_write_estimate = 0.060
          self._slow_time = {0x12: 0.0, 0x13: 0.0, 0x17: 0.0, 0x14: 0.0}
 +
 +    def configure_demo_monitor(self, config):
 +        """Publish an immutable preference snapshot; no UART I/O on caller thread."""
 +        self._demo_monitor_config = dict(config)
 +
-+    def _demo_checkpoint(self):
++    def _demo_checkpoint(self, *, before_write=False):
 +        """Service STOP first and sample between complete UART transactions."""
 +        self._service_urgent()
 +        self._check_bench_deadline()
@@ -20,8 +22,14 @@
 +        config = self._demo_monitor_config
 +        if not (config.get('auto') and config.get('fast_demo')):
 +            return
-+        now = time.monotonic()
-+        if now < self._demo_next_sample_at:
++        now = time.perf_counter()
++        due = now >= self._demo_next_sample_at
++        # A synchronous write cannot be interrupted for telemetry. If its
++        # expected ACK would cross the next deadline, sample just before it.
++        # Don't duplicate a sample just received, or override a slower period.
++        prewrite_due = (before_write and now-self._last_current_received_at >= 0.005
++                        and now+self._demo_write_estimate >= self._demo_next_sample_at)
++        if not (due or prewrite_due):
 +            return
 +        interval = max(50, min(1500, int(config.get('period_ms', 50)))) / 1000.0
 +        self._demo_next_sample_at = now + interval
@@ -29,20 +37,20 @@
  
      def submit(self, action, data=None):
          if action in ('motor_stop', 'learning_abort'):
-@@ -293,39 +314,56 @@
+@@ -293,39 +322,58 @@
          # Validated firmware limits / overload-threshold and readback still apply.
          if self.learning_active:
              raise ProtocolError('行程學習中禁止調整展示限流')
 -        fw = read_info(self.client.read_cmd(0x70))
 -        device = read_info(self.client.read_cmd(0x71))
-+        started = time.monotonic()
++        started = time.perf_counter()
 +        timings = []
 +
 +        def read(command, **kwargs):
-+            before = time.monotonic()
++            before = time.perf_counter()
 +            payload = self.client.read_cmd(command, **kwargs)
 +            timings.append({'command': f'0x{command:02X}', 'operation': 'read',
-+                            'elapsed_ms': round((time.monotonic()-before)*1000, 2)})
++                            'elapsed_ms': round((time.perf_counter()-before)*1000, 2)})
 +            self._demo_checkpoint()
 +            return payload
 +
@@ -69,13 +77,15 @@
              self.demo_original_current = raw
 -        self._service_urgent()
 -        self._check_bench_deadline()
-+        self._demo_checkpoint()
++        self._demo_checkpoint(before_write=True)
          if self.learning_active:
              raise ProtocolError('正在學習，拒絕變更限流')
-+        before = time.monotonic()
++        before = time.perf_counter()
          self.client.write_cmd(command, payload, timeout=0.28)
++        write_elapsed = time.perf_counter()-before
++        self._demo_write_estimate = max(0.005, write_elapsed)
 +        timings.append({'command': f'0x{command:02X}', 'operation': 'write',
-+                        'elapsed_ms': round((time.monotonic()-before)*1000, 2)})
++                        'elapsed_ms': round(write_elapsed*1000, 2)})
 +        self._demo_checkpoint()
          actual = None
          for attempt in range(4):
@@ -92,12 +102,12 @@
          return {'requested_A': float(limit), 'actual_A': actual['current_limit'],
 -                'current_group': actual, 'saved_original': True}
 +                'current_group': actual, 'saved_original': True,
-+                'elapsed_ms': round((time.monotonic()-started)*1000, 2),
++                'elapsed_ms': round((time.perf_counter()-started)*1000, 2),
 +                'transactions': timings}
  
      def _demo_restore(self):
          if self.motor_direction or self.learning_active:
-@@ -467,9 +505,16 @@
+@@ -467,9 +515,16 @@
                  info['parameters'][name] = {'read_error': str(exc)}
          return info
  
@@ -115,7 +125,7 @@
          log_frames = bool(config.get('log_frames', False))
          # Short per-request deadline when auto polling; no blocking for 1.2s.
          timeout = 0.12 if auto else 0.5
-@@ -480,7 +525,7 @@
+@@ -480,7 +535,7 @@
              commands = scheduled_monitor_commands(
                  auto=auto,
                  now=time.monotonic(), last=self._slow_time,
@@ -124,7 +134,16 @@
              )
              learning_status, learning_flags = None, None
              for cmd in commands:
-@@ -528,10 +573,11 @@
+@@ -490,6 +545,8 @@
+                 try:
+                     payload = self.client.read_cmd(cmd, timeout=timeout)
+                     values = decode_monitor(cmd, payload)
++                    if cmd == 0x10:
++                        self._last_current_received_at = time.perf_counter()
+                     if cmd == 0x12:
+                         learning_status = payload
+                         self.last_learn_status = payload
+@@ -528,10 +585,11 @@
                  if stage in ('failed', 'completed_candidate'):
                      self.learning_active = False
                      self.success.emit('learning_result', {'stage': stage})

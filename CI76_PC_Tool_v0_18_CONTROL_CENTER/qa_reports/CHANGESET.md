@@ -45,3 +45,10 @@ blocking serial I/O. Hardware tests and Windows captures remain unrun.
 - tests/test_v018_current_only.py：驗證保留 live Device Code，移除未使用的 firmware 查詢。
 - tests/test_v018_responsive_tuning.py：12 個假延遲、無並行請求、關閉監控、STOP、讀回失敗、過載與 GUI pending 回歸案例。
 - RESPONSIVE_TUNING_REPORT.md/responsive_simulation.json：量測邊界、模擬結果與限制。
+
+## R4 追加變更
+
+- worker.py：慢寫入前的期限預測及電流預讀、最近 ACK 耗時、最新樣本時間；Demo 排程與量測改用 perf_counter。
+- main.py：PreciseTimer、刷新間隔高解析度量測、R4 版本標記。
+- tests/test_v018_responsive_tuning.py：假時鐘補 perf_counter，新增四個 R4 排程案例。
+- FIELD_LATENCY_REPORT.md / prewrite_simulation.json：使用者測試分段分析及新舊排程模擬；原始上傳 Log 未納入交付。

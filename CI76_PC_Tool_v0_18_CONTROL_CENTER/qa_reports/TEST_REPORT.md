@@ -122,3 +122,10 @@ Current-only idle polling alone did not resolve pauses during slider writes.
 The responsive update now interleaves due telemetry between complete UART requests.
 See RESPONSIVE_TUNING_REPORT.md and responsive_simulation.json. Final full-suite
 counts are in pytest.txt; earlier timings/counts in this report are historical.
+
+## R4 field-log follow-up
+
+The user supplied UART logs identify actual long write-ACK windows. R4 adds
+prewrite sampling and high-resolution timing; see FIELD_LATENCY_REPORT.md.
+User logs validate the prior build behavior, not the newly changed R4 performance.
+Final full-suite results are in pytest.txt.

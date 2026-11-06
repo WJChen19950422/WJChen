@@ -35,7 +35,7 @@ class TimedClient(FakeClient):
 @pytest.fixture
 def simulated_worker(app,monkeypatch):
     clock=Clock()
-    monkeypatch.setattr(worker_module,'time',SimpleNamespace(monotonic=clock.now,sleep=clock.advance))
+    monkeypatch.setattr(worker_module,'time',SimpleNamespace(monotonic=clock.now,perf_counter=clock.now,sleep=clock.advance))
     w=SerialWorker();w.client=TimedClient(clock)
     return w,clock
 
@@ -154,3 +154,45 @@ def test_gui_updates_worker_monitor_preferences_during_write(make_window):
     assert not w.worker.demo_monitor_config['auto']
     w.tabs.setCurrentIndex(0)
     assert not w.worker.demo_monitor_config['fast_demo']
+
+
+def test_slow_ack_gets_fresh_current_before_write(simulated_worker):
+    w,clock=simulated_worker;enable(w)
+    w.client.latency=.014
+    write=w.client.write_cmd
+    def slow_ack(cmd,payload,**kw):
+        previous=w.client.latency
+        w.client.latency=.057 if cmd==0x06 else previous
+        try: return write(cmd,payload,**kw)
+        finally: w.client.latency=previous
+    w.client.write_cmd=slow_ack
+    samples=[]
+    w.success.connect(lambda action,data: samples.append(clock.now()) if action=='monitor_item' and 'current' in data else None)
+    result=w._demo_limit(1.5)
+    assert result['actual_A']==1.5
+    assert len(samples)>=3
+    assert max(b-a for a,b in zip(samples,samples[1:])) <= .075001
+    assert abs(w._demo_write_estimate-.057)<.000001
+    assert w.client.max_active==1
+
+
+def test_prewrite_does_not_duplicate_fresh_sample(simulated_worker):
+    w,clock=simulated_worker;enable(w)
+    w._demo_checkpoint()
+    n=len(w.client.calls)
+    w._demo_checkpoint(before_write=True)
+    assert len(w.client.calls)==n
+
+
+def test_long_user_poll_period_not_overridden_by_prewrite(simulated_worker):
+    w,clock=simulated_worker
+    w.configure_demo_monitor(dict(auto=True,fast_demo=True,current_only=True,period_ms=1500))
+    assert w._demo_limit(1.5)['actual_A']==1.5
+    assert sum(cmd==0x10 for _,cmd,_ in w.client.calls)==1
+
+
+def test_gui_poll_timers_use_precise_timer(make_window):
+    from PySide6.QtCore import Qt
+    w=make_window()
+    assert w.timer.timerType()==Qt.TimerType.PreciseTimer
+    assert w.demo_update_timer.timerType()==Qt.TimerType.PreciseTimer

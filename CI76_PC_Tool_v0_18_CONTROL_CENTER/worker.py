@@ -52,13 +52,15 @@ class SerialWorker(QThread):
         self._mute_trace = False
         self._demo_monitor_config = {}
         self._demo_next_sample_at = 0.0
+        self._last_current_received_at = float('-inf')
+        self._demo_write_estimate = 0.060
         self._slow_time = {0x12: 0.0, 0x13: 0.0, 0x17: 0.0, 0x14: 0.0}
 
     def configure_demo_monitor(self, config):
         """Publish an immutable preference snapshot; no UART I/O on caller thread."""
         self._demo_monitor_config = dict(config)
 
-    def _demo_checkpoint(self):
+    def _demo_checkpoint(self, *, before_write=False):
         """Service STOP first and sample between complete UART transactions."""
         self._service_urgent()
         self._check_bench_deadline()
@@ -66,8 +68,14 @@ class SerialWorker(QThread):
         config = self._demo_monitor_config
         if not (config.get('auto') and config.get('fast_demo')):
             return
-        now = time.monotonic()
-        if now < self._demo_next_sample_at:
+        now = time.perf_counter()
+        due = now >= self._demo_next_sample_at
+        # A synchronous write cannot be interrupted for telemetry. If its
+        # expected ACK would cross the next deadline, sample just before it.
+        # Don't duplicate a sample just received, or override a slower period.
+        prewrite_due = (before_write and now-self._last_current_received_at >= 0.005
+                        and now+self._demo_write_estimate >= self._demo_next_sample_at)
+        if not (due or prewrite_due):
             return
         interval = max(50, min(1500, int(config.get('period_ms', 50)))) / 1000.0
         self._demo_next_sample_at = now + interval
@@ -314,14 +322,14 @@ class SerialWorker(QThread):
         # Validated firmware limits / overload-threshold and readback still apply.
         if self.learning_active:
             raise ProtocolError('行程學習中禁止調整展示限流')
-        started = time.monotonic()
+        started = time.perf_counter()
         timings = []
 
         def read(command, **kwargs):
-            before = time.monotonic()
+            before = time.perf_counter()
             payload = self.client.read_cmd(command, **kwargs)
             timings.append({'command': f'0x{command:02X}', 'operation': 'read',
-                            'elapsed_ms': round((time.monotonic()-before)*1000, 2)})
+                            'elapsed_ms': round((time.perf_counter()-before)*1000, 2)})
             self._demo_checkpoint()
             return payload
 
@@ -343,13 +351,15 @@ class SerialWorker(QThread):
         command, payload, old, requested = demo_current_write(raw, float(limit))
         if self.demo_original_current is None:
             self.demo_original_current = raw
-        self._demo_checkpoint()
+        self._demo_checkpoint(before_write=True)
         if self.learning_active:
             raise ProtocolError('正在學習，拒絕變更限流')
-        before = time.monotonic()
+        before = time.perf_counter()
         self.client.write_cmd(command, payload, timeout=0.28)
+        write_elapsed = time.perf_counter()-before
+        self._demo_write_estimate = max(0.005, write_elapsed)
         timings.append({'command': f'0x{command:02X}', 'operation': 'write',
-                        'elapsed_ms': round((time.monotonic()-before)*1000, 2)})
+                        'elapsed_ms': round(write_elapsed*1000, 2)})
         self._demo_checkpoint()
         actual = None
         for attempt in range(4):
@@ -362,7 +372,7 @@ class SerialWorker(QThread):
             raise ProtocolError(f'限流讀回 {actual["current_limit"]:.2f} A 與要求值不一致')
         return {'requested_A': float(limit), 'actual_A': actual['current_limit'],
                 'current_group': actual, 'saved_original': True,
-                'elapsed_ms': round((time.monotonic()-started)*1000, 2),
+                'elapsed_ms': round((time.perf_counter()-started)*1000, 2),
                 'transactions': timings}
 
     def _demo_restore(self):
@@ -535,6 +545,8 @@ class SerialWorker(QThread):
                 try:
                     payload = self.client.read_cmd(cmd, timeout=timeout)
                     values = decode_monitor(cmd, payload)
+                    if cmd == 0x10:
+                        self._last_current_received_at = time.perf_counter()
                     if cmd == 0x12:
                         learning_status = payload
                         self.last_learn_status = payload

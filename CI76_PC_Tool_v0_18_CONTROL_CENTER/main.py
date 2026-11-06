@@ -58,7 +58,7 @@ class CI76Window(QMainWindow):
         self._link_stale = False
         self._current_draft_dirty = False
         self._applying_group = False
-        self.setWindowTitle('MOTECK | CI76 Control Center v0.18 LAB')
+        self.setWindowTitle('MOTECK | CI76 Control Center v0.18 R4 LAB')
         self.resize(1360, 820)
         self.setMinimumSize(1100, 660)
         self.connected = False
@@ -103,9 +103,11 @@ class CI76Window(QMainWindow):
         self.worker.trace.connect(self.log)
         self.worker.start()
         self.timer = QTimer(self)
+        self.timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.timer.setInterval(100)
         self.timer.timeout.connect(self.poll_once)
         self.demo_update_timer = QTimer(self)
+        self.demo_update_timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.demo_update_timer.setInterval(50)
         self.demo_update_timer.timeout.connect(self._flush_demo_limit)
 
@@ -138,7 +140,7 @@ class CI76Window(QMainWindow):
         hero.setObjectName('heroTitle')
         hero.setAlignment(Qt.AlignmentFlag.AlignRight)
         right_head.addWidget(hero)
-        tag = QLabel('LAB v0.18   •   UART 115200 / 8N1   •   Protocol 251110')
+        tag = QLabel('LAB v0.18 · R4   •   UART 115200 / 8N1   •   Protocol 251110')
         tag.setObjectName('buildTag')
         tag.setAlignment(Qt.AlignmentFlag.AlignRight)
         right_head.addWidget(tag)
@@ -1714,7 +1716,7 @@ class CI76Window(QMainWindow):
                         self.demo_actual.setText(f'{float(value):.2f} A')
                         self.demo_current_bar.setValue(gauge_value(float(value), 8.0))
                         self.demo_current_dial.setReading(float(value))
-                        sample_time = time.monotonic()
+                        sample_time = time.perf_counter()
                         if self._last_demo_current_ts is not None:
                             delta_ms = (sample_time - self._last_demo_current_ts) * 1000.0
                             self.demo_sample_rate.setText(f'電流實際刷新：約 {delta_ms:.0f} ms')

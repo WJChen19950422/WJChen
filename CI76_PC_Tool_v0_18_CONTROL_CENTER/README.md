@@ -1,4 +1,4 @@
-# MOTECK CI76 Control Center v0.18 — LAB
+# MOTECK CI76 Control Center v0.18 — LAB R4
 
 Windows 10/11 · Python 3.12 · PySide6 6.7+ · pyserial 3.5+ · Protocol 251110
 
@@ -89,3 +89,13 @@ py -3.12 -m venv .venv
 - 限流是最大允許電流，並非實際電流／推力的線性控制。
 
 模擬與測試詳見 `qa_reports/RESPONSIVE_TUNING_REPORT.md`；Windows／MCU 實測仍待完成。
+
+## R4：實測紀錄導向的慢寫入前預讀
+
+請確認視窗與品牌列顯示 `R4`。根據使用者紀錄，電流查詢回覆約 13–14 ms，
+0x06 ACK 約 57 ms；部分 100 ms 停頓含慢寫入前已消耗的 31 ms。R4 在預計
+跨過監控期限的慢寫入前先讀電流；以最後一次 ACK 耗時更新預估，剛取得
+樣本時不重複讀。採 perf_counter 量測與 Qt PreciseTimer，保留單一 UART owner。
+
+分析與限制見 `qa_reports/FIELD_LATENCY_REPORT.md`。R4 尚待 Windows／CI76 重測；
+單筆 ACK 本身 57 ms 時，PC 無法保證寫入期間每筆電流都在 50 ms 內更新。

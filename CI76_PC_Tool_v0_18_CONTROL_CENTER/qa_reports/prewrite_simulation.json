@@ -1,0 +1,32 @@
+{
+  "hardware_measurement": false,
+  "simulation": [
+    {
+      "mode": "prior_responsive",
+      "simulated_read_ms": 14,
+      "simulated_write_ack_ms": 57,
+      "current_sample_times_ms": [
+        14.0,
+        70.0,
+        155.0
+      ],
+      "max_sample_gap_ms": 85.0,
+      "max_concurrent_requests": 1,
+      "whole_write_ms": 169.0
+    },
+    {
+      "mode": "prewrite_sampling",
+      "simulated_read_ms": 14,
+      "simulated_write_ack_ms": 57,
+      "current_sample_times_ms": [
+        14.0,
+        70.0,
+        98.0,
+        169.0
+      ],
+      "max_sample_gap_ms": 71.0,
+      "max_concurrent_requests": 1,
+      "whole_write_ms": 183.0
+    }
+  ]
+}
