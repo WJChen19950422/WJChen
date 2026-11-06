@@ -64,7 +64,8 @@ def test_current_only_cannot_skip_explicit_limit_readback(app):
     w.client.reads.clear()
     result=w._demo_limit(1.5)
     assert result['actual_A']==1.5
-    assert 0x70 in w.client.reads and 0x71 in w.client.reads
+    assert 0x71 in w.client.reads
+    assert 0x70 not in w.client.reads  # Unused firmware-version query removed.
     assert 0x12 in w.client.reads and 0x17 in w.client.reads
     assert w.client.reads.count(0x19)>=2
     assert w.client.writes[-1][0]==0x06

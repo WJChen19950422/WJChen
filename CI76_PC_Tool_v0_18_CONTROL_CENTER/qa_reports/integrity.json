@@ -17,13 +17,13 @@
   "modified_monitoring_only": {
     "worker.py": {
       "baseline_sha256": "3031e3844aab86541b10c55a398a86da61e4ae6cbf2b687c5564eca49967f845",
-      "current_sha256": "1d81794592ec2662fb3f2ecd9309e4d49841cd938d9d8f1b45f5042a4d8bb8b1",
-      "reason": "Authorized current-only tuning polling; existing protocol and motion/learning control paths retained"
+      "current_sha256": "e821855d49cbab98247e8671634573de6a2366c36d42df9ba8beb4e0da7d55a2",
+      "reason": "Authorized current-only polling and interleaved telemetry between Demo limit UART transactions; protocol, firmware, ACK/readback and motor safety restrictions retained"
     },
     "monitoring.py": {
       "baseline_sha256": "6b7663521bbb22a9505ead6a93c290698ec5c82d84ab056ca0daa7fbdd3eaa06",
       "current_sha256": "09f2c37c3b377a3c670c93a762dc02cb2663e26ea17279ea4f0e665e5ebedcc3",
-      "reason": "Authorized current-only tuning polling; existing protocol and motion/learning control paths retained"
+      "reason": "Authorized current-only polling and interleaved telemetry between Demo limit UART transactions; protocol, firmware, ACK/readback and motor safety restrictions retained"
     }
   }
 }

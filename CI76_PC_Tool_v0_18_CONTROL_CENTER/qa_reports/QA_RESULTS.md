@@ -42,3 +42,7 @@ of scope and unchanged.
 ## 2026-11-06 current-only follow-up
 
 A07 的電流專用輪詢採單次立即標記失效、連續三次失敗才關閉／鎖定；A25 第二頁待機僅查 0x10，其他欄位 UNKNOWN，控制／學習時保留原安全查詢。新增測試見 test_v018_current_only.py。最終測試數量見 pytest.txt；Windows／硬體項目仍 BLOCKED。
+
+## 滑桿連續監控追加驗證
+
+A09/A10/A11：仍需完整讀回確認與獨立草稿；目標合併改為 50 ms。A12：限流交易每步驟間服務優先 STOP；原有 2 秒與學習測試保留。A25：拖動期間的 inline 電流樣本不結束前景交易；CSV 持續。詳見 RESPONSIVE_TUNING_REPORT.md。所有 Windows／硬體 BLOCKED 狀態維持。

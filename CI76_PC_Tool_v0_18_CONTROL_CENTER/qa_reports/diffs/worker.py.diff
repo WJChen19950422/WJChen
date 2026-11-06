@@ -1,7 +1,108 @@
 --- v017/worker.py
 +++ v018/worker.py
-@@ -470,6 +470,13 @@
-     def _monitor(self, data):
+@@ -50,7 +50,28 @@
+         self.client = None
+         self.running = True
+         self._mute_trace = False
++        self._demo_monitor_config = {}
++        self._demo_next_sample_at = 0.0
+         self._slow_time = {0x12: 0.0, 0x13: 0.0, 0x17: 0.0, 0x14: 0.0}
++
++    def configure_demo_monitor(self, config):
++        """Publish an immutable preference snapshot; no UART I/O on caller thread."""
++        self._demo_monitor_config = dict(config)
++
++    def _demo_checkpoint(self):
++        """Service STOP first and sample between complete UART transactions."""
++        self._service_urgent()
++        self._check_bench_deadline()
++        self._heartbeat()
++        config = self._demo_monitor_config
++        if not (config.get('auto') and config.get('fast_demo')):
++            return
++        now = time.monotonic()
++        if now < self._demo_next_sample_at:
++            return
++        interval = max(50, min(1500, int(config.get('period_ms', 50)))) / 1000.0
++        self._demo_next_sample_at = now + interval
++        self._monitor(config, inline=True)
+ 
+     def submit(self, action, data=None):
+         if action in ('motor_stop', 'learning_abort'):
+@@ -293,39 +314,56 @@
+         # Validated firmware limits / overload-threshold and readback still apply.
+         if self.learning_active:
+             raise ProtocolError('行程學習中禁止調整展示限流')
+-        fw = read_info(self.client.read_cmd(0x70))
+-        device = read_info(self.client.read_cmd(0x71))
++        started = time.monotonic()
++        timings = []
++
++        def read(command, **kwargs):
++            before = time.monotonic()
++            payload = self.client.read_cmd(command, **kwargs)
++            timings.append({'command': f'0x{command:02X}', 'operation': 'read',
++                            'elapsed_ms': round((time.monotonic()-before)*1000, 2)})
++            self._demo_checkpoint()
++            return payload
++
++        self._demo_checkpoint()
++        # Firmware version is already shown by connection identity and was
++        # never a limit-write gate. Keep live Device Code verification here.
++        device = read_info(read(0x71))
+         if device != '0x0B01':
+             raise ProtocolError('Demo 僅允許 CI76 Device Code 0x0B01')
+         # Before learning, the 0x20 feedback fault is expected and allowed for physical I1/I2.
+-        errors = self.client.read_cmd(0x17)
++        errors = read(0x17)
+         if len(errors) != 2 or (errors[0] & ~0x20) or errors[1]:
+             raise ProtocolError('存在非待學習的故障旗標，不能調整 Demo 限流')
+-        status = self.client.read_cmd(0x12)
++        status = read(0x12)
+         if len(status) != 1:
+             raise ProtocolError('未收到有效的馬達狀態')
+         # Prefer manual control owner and known 0x0B01 FW.
+-        raw = self.client.read_cmd(0x19, timeout=0.28)
++        raw = read(0x19, timeout=0.28)
+         command, payload, old, requested = demo_current_write(raw, float(limit))
+         if self.demo_original_current is None:
+             self.demo_original_current = raw
+-        self._service_urgent()
+-        self._check_bench_deadline()
++        self._demo_checkpoint()
+         if self.learning_active:
+             raise ProtocolError('正在學習，拒絕變更限流')
++        before = time.monotonic()
+         self.client.write_cmd(command, payload, timeout=0.28)
++        timings.append({'command': f'0x{command:02X}', 'operation': 'write',
++                        'elapsed_ms': round((time.monotonic()-before)*1000, 2)})
++        self._demo_checkpoint()
+         actual = None
+         for attempt in range(4):
+-            self._service_urgent()
+-            self._check_bench_deadline()
+-            actual = parse_group('電流', self.client.read_cmd(0x19, timeout=0.25))
++            self._demo_checkpoint()
++            actual = parse_group('電流', read(0x19, timeout=0.25))
+             if abs(actual['current_limit'] - requested['current_limit']) <= 0.011:
+                 break
+             time.sleep(0.04)
+         else:
+             raise ProtocolError(f'限流讀回 {actual["current_limit"]:.2f} A 與要求值不一致')
+         return {'requested_A': float(limit), 'actual_A': actual['current_limit'],
+-                'current_group': actual, 'saved_original': True}
++                'current_group': actual, 'saved_original': True,
++                'elapsed_ms': round((time.monotonic()-started)*1000, 2),
++                'transactions': timings}
+ 
+     def _demo_restore(self):
+         if self.motor_direction or self.learning_active:
+@@ -467,9 +505,16 @@
+                 info['parameters'][name] = {'read_error': str(exc)}
+         return info
+ 
+-    def _monitor(self, data):
++    def _monitor(self, data, *, inline=False):
          config = data or {}
          auto = bool(config.get('auto', False))
 +        fast_demo = bool(config.get('fast_demo', False))
@@ -14,7 +115,7 @@
          log_frames = bool(config.get('log_frames', False))
          # Short per-request deadline when auto polling; no blocking for 1.2s.
          timeout = 0.12 if auto else 0.5
-@@ -480,7 +487,7 @@
+@@ -480,7 +525,7 @@
              commands = scheduled_monitor_commands(
                  auto=auto,
                  now=time.monotonic(), last=self._slow_time,
@@ -23,7 +124,12 @@
              )
              learning_status, learning_flags = None, None
              for cmd in commands:
-@@ -532,6 +539,7 @@
+@@ -528,10 +573,11 @@
+                 if stage in ('failed', 'completed_candidate'):
+                     self.learning_active = False
+                     self.success.emit('learning_result', {'stage': stage})
+-            self.success.emit('monitor', {
++            self.success.emit('monitor_inline' if inline else 'monitor', {
                  'ok': ok, 'failed': failed, 'auto': auto,
                  'elapsed_ms': round((time.monotonic() - start) * 1000),
                  'sample_at': time.monotonic(),

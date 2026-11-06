@@ -115,3 +115,10 @@ Windows follow-up commands are documented in README. Do not classify the full
 specification's Definition of Done or Windows visual acceptance as passed until
 these screenshots and checks are actually completed. See QA_RESULTS.md for every
 checklist item.
+
+## 2026-11-06 responsive slider follow-up
+
+Current-only idle polling alone did not resolve pauses during slider writes.
+The responsive update now interleaves due telemetry between complete UART requests.
+See RESPONSIVE_TUNING_REPORT.md and responsive_simulation.json. Final full-suite
+counts are in pytest.txt; earlier timings/counts in this report are historical.

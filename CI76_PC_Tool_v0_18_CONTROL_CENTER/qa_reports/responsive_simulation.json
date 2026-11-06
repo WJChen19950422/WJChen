@@ -1,0 +1,46 @@
+{
+  "hardware_measurement": false,
+  "baseline_commit": "78b25ad41aaf07f3ab07f99db6cd12b2bec530fa",
+  "simulation": [
+    {
+      "mode": "before",
+      "per_request_simulated_ms": 20,
+      "whole_write_ms": 140.0,
+      "current_sample_times_ms": [],
+      "serial_command_sequence": [
+        "read:0x70",
+        "read:0x71",
+        "read:0x17",
+        "read:0x12",
+        "read:0x19",
+        "write:0x06",
+        "read:0x19"
+      ],
+      "max_concurrent_requests": 1
+    },
+    {
+      "mode": "responsive",
+      "per_request_simulated_ms": 20,
+      "whole_write_ms": 200.0,
+      "current_sample_times_ms": [
+        20.0,
+        80.0,
+        140.0,
+        200.0
+      ],
+      "serial_command_sequence": [
+        "read:0x10",
+        "read:0x71",
+        "read:0x17",
+        "read:0x10",
+        "read:0x12",
+        "read:0x19",
+        "read:0x10",
+        "write:0x06",
+        "read:0x19",
+        "read:0x10"
+      ],
+      "max_concurrent_requests": 1
+    }
+  ]
+}

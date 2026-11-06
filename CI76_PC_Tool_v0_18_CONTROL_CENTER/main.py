@@ -106,7 +106,7 @@ class CI76Window(QMainWindow):
         self.timer.setInterval(100)
         self.timer.timeout.connect(self.poll_once)
         self.demo_update_timer = QTimer(self)
-        self.demo_update_timer.setInterval(250)
+        self.demo_update_timer.setInterval(50)
         self.demo_update_timer.timeout.connect(self._flush_demo_limit)
 
         central = QWidget()
@@ -207,6 +207,7 @@ class CI76Window(QMainWindow):
         actions.addWidget(self.poll_period)
         actions.addWidget(self.poll_rate)
         self.poll_trace = QCheckBox('記錄輪詢封包')
+        self.poll_trace.toggled.connect(self._sync_demo_monitor)
         self.poll_trace.setToolTip('50/100ms 自動輪詢時關閉可避免 UART log 每秒大量刷屏')
         tools.insertWidget(0, self.poll_trace)
         actions.addLayout(tools)
@@ -569,6 +570,7 @@ class CI76Window(QMainWindow):
         self.demo_slider.setSingleStep(5)
         self.demo_slider.setPageStep(10)
         self.demo_slider.valueChanged.connect(self._on_demo_slider_changed)
+        self.demo_slider.sliderReleased.connect(self._flush_demo_limit)
         control_layout.addWidget(self.demo_slider)
         slider_ends = QHBoxLayout()
         low = QLabel('0.00 A  /  MIN')
@@ -590,7 +592,7 @@ class CI76Window(QMainWindow):
         self.demo_restore_btn.clicked.connect(self.request_demo_restore)
         control_row.addWidget(self.demo_restore_btn)
         control_layout.addLayout(control_row)
-        self.demo_write_status = QLabel('拖動後約 250 ms 寫入 UART；MCU 讀回後才確認生效')
+        self.demo_write_status = QLabel('每 50 ms 合併最新目標；寫入期間穿插電流監控，MCU 讀回後才確認生效')
         self.demo_write_status.setObjectName('hudCaption')
         self.demo_write_status.setWordWrap(True)
         control_layout.addWidget(self.demo_write_status)
@@ -719,6 +721,7 @@ class CI76Window(QMainWindow):
         elif self._demo_pending_value is None and not self._demo_write_inflight:
             if 'current_limit' in self.last_values:
                 self._set_demo_limit_display(self.last_values['current_limit'])
+        self._sync_demo_monitor()
 
     def _demo_spin_to_slider(self, amps):
         self.demo_slider.setValue(amps_to_ticks(amps))
@@ -770,7 +773,9 @@ class CI76Window(QMainWindow):
         self._demo_write_inflight = True
         self._demo_last_sent = value
         self.demo_write_status.setText(f'設定 {value:.2f} A → UART 0x06 寫入中，等待 0x19 讀回…')
-        self.demo_sample_rate.setText('電流實際刷新：限流寫入中，暫停輪詢')
+        self._sync_demo_monitor()
+        self.demo_sample_rate.setText('電流實際刷新：寫入步驟間持續監控' if self.auto_poll.isChecked()
+                                      else '電流實際刷新：自動監控已關閉')
         self.submit('demo_limit', value)
 
     def request_demo_restore(self):
@@ -946,6 +951,16 @@ class CI76Window(QMainWindow):
                 'fast_demo': fast_demo, 'current_only': current_only,
             })
 
+    def _sync_demo_monitor(self):
+        self.worker.configure_demo_monitor({
+            'auto': self.connected and self.auto_poll.isChecked() and not self._link_stale,
+            'fast_demo': self.tabs.currentWidget() is self.demo_tab,
+            'current_only': not (self.motion_active or self.learning_requested
+                                 or self.bench_uart_enabled or self.stop_pending or self.interlock_fault),
+            'period_ms': self.poll_period.currentData(),
+            'log_frames': self.poll_trace.isChecked(),
+        })
+
     def _set_poll_scope(self, current_only):
         if current_only:
             self.demo_poll_scope.setText('僅更新實際電流；位置／狀態／故障／運轉時間暫停更新 · 無 RPM 或推力實測')
@@ -970,6 +985,7 @@ class CI76Window(QMainWindow):
         self.hud_fault.setText('PAUSED / UNKNOWN')
 
     def poll_toggled(self, checked):
+        self._sync_demo_monitor()
         self._last_monitor_ts = None
         self._last_demo_current_ts = None
         if checked and self.connected and not self._foreground_pending:
@@ -984,6 +1000,7 @@ class CI76Window(QMainWindow):
             self.demo_sample_rate.setText('電流實際刷新：等待資料…')
 
     def poll_period_changed(self):
+        self._sync_demo_monitor()
         if self.auto_poll.isChecked() and self.timer.isActive():
             self.timer.setInterval(self.poll_period.currentData())
             self._last_monitor_ts = None
@@ -1441,10 +1458,10 @@ class CI76Window(QMainWindow):
 
     def on_success(self, action, data):
         # Ignore delayed telemetry signals after a disconnect, never revive stale values.
-        if not self.connected and action in ('monitor_item', 'monitor_problem', 'monitor'):
+        if not self.connected and action in ('monitor_item', 'monitor_problem', 'monitor', 'monitor_inline'):
             return
         if action not in ('connect','disconnect','readgroup_part','group_problem',
-                          'monitor_item','monitor_problem', 'motor_lost', 'motor_autostop',
+                          'monitor_item','monitor_problem', 'monitor_inline', 'motor_lost', 'motor_autostop',
                           'learning_stage', 'learning_result', 'learning_abort'):
             self.pending = max(0, self.pending - 1)
         if action == 'connect':
@@ -1601,6 +1618,9 @@ class CI76Window(QMainWindow):
                 self.demo_write_status.setText(f'✓ Demo 寫入／MCU 讀回一致：{actual_a:.2f} A')
             self._render_motion_state()
             self.log(f'DEMO 限流目標 {data["requested_A"]:.2f} A，ACK/讀回 {actual_a:.2f} A')
+            if 'transactions' in data:
+                detail = ', '.join(f'{t["command"]} {t["elapsed_ms"]:.1f}ms' for t in data['transactions'])
+                self.log(f'DEMO TIMING 總計 {data["elapsed_ms"]:.1f}ms；{detail}')
         elif action == 'demo_speed':
             self.demo_speed_modified = True
             self.demo_dirty = True
@@ -1745,6 +1765,13 @@ class CI76Window(QMainWindow):
             if now - self._last_issue_at.get(cmd, 0) >= 5.0:
                 self._last_issue_at[cmd] = now
                 self.log(f'WARN  監控 0x{cmd:02X}：{why}')
+        elif action == 'monitor_inline':
+            # The enclosing write still owns its one pending transaction.
+            # Don't decrement it, restart polling, or disconnect mid-write.
+            if 'current_only' in data:
+                self._set_poll_scope(data['current_only'])
+            if data['auto'] and data['ok']:
+                self._record_telemetry_sample()
         elif action == 'monitor':
             if 'current_only' in data:
                 self._set_poll_scope(data['current_only'])
@@ -1779,17 +1806,8 @@ class CI76Window(QMainWindow):
                 self._reset_error_flags('連線失效 / UNKNOWN')
                 self._connection_state('TIMEOUT / REMOVED',
                     '連線失效；未自動還原或重播設定。若有動作請用獨立硬體停止，再手動讀取設備資訊。')
-            if data['auto'] and time.monotonic() - self._last_telemetry_log > 1.0:
-                self._last_telemetry_log = time.monotonic()
-                sample = dict(current_A=self.latest_monitor.get('current'),
-                              position_pct=self.latest_monitor.get('position'),
-                              motor_status=self.latest_monitor.get('motor'),
-                              flags=self.last_error_bits,
-                              motor_seconds=self.latest_monitor.get('motor_seconds'))
-                try:
-                    self.event_store.sample(**sample)
-                except OSError as exc:
-                    self.statusBar().showMessage(f'CSV 記錄失敗：{exc}')
+            if data['auto']:
+                self._record_telemetry_sample()
             failed = len(data['failed'])
             if failed:
                 self.statusBar().showMessage(
@@ -1800,6 +1818,20 @@ class CI76Window(QMainWindow):
         if action in ('identity', 'readgroup', 'readall', 'writegroup', 'sensor_read', 'sensor_write', 'motor_time_read', 'motor_time_reset', 'diagnostics', 'motor_start', 'bench_start', 'bench_uart_mode', 'motor_stop', 'learning_start', 'learning_abort', 'demo_limit', 'demo_restore', 'demo_speed', 'error_clear'):
             self._foreground_pending = False
             self._resume_poll()
+
+    def _record_telemetry_sample(self):
+        if time.monotonic() - self._last_telemetry_log <= 1.0:
+            return
+        self._last_telemetry_log = time.monotonic()
+        sample = dict(current_A=self.latest_monitor.get('current'),
+                      position_pct=self.latest_monitor.get('position'),
+                      motor_status=self.latest_monitor.get('motor'),
+                      flags=self.last_error_bits,
+                      motor_seconds=self.latest_monitor.get('motor_seconds'))
+        try:
+            self.event_store.sample(**sample)
+        except OSError as exc:
+            self.statusBar().showMessage(f'CSV 記錄失敗：{exc}')
 
     def on_error(self, action, message):
         if action == 'identity' and not self.identity_verified:

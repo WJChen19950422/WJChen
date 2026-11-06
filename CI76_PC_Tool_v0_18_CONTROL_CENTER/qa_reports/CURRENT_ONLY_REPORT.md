@@ -1,5 +1,8 @@
 # 第二頁僅電流監控 — 2026-11-06 (Asia/Taipei)
 
+此為 current-only 前版的歷史報告。最新滑桿連續監控變更與最終結果請見
+`RESPONSIVE_TUNING_REPORT.md` 及 `pytest.txt`。
+
 ## 要求與實作
 
 使用者在初版交付後要求：第二頁先只回傳電流，降低更新等待。

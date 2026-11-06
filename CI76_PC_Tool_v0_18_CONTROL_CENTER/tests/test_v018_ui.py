@@ -27,6 +27,7 @@ class RecordedWorker(QObject):
         self.commands = []
     def start(self): pass
     def submit(self, action, data=None): self.commands.append((action, data))
+    def configure_demo_monitor(self, config): self.demo_monitor_config=dict(config)
     def halt(self): pass
     def wait(self, ms): return True
 
@@ -357,10 +358,10 @@ def test_demo_debounce_timer_sends_latest_target(make_window):
     w = make_window(); verify(w)
     w.tabs.setCurrentIndex(1)
     w.demo_slider.setValue(150)
-    QTest.qWait(100)
+    QTest.qWait(10)
     w.demo_slider.setValue(200)
     assert not w.worker.commands
-    QTest.qWait(220)
+    QTest.qWait(80)
     assert w.worker.commands == [('demo_limit',2)]
 
 

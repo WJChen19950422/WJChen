@@ -11,7 +11,7 @@ existing files are in `qa_reports/diffs/`.
 | theme.py (new) | Midnight Tech Blue tokens, complete QSS + QPalette + Fusion; explicit nonnative list popup, semantic highlight, approved asset loader / text fallback |
 | settings_store.py (new) | Safe QSettings persistence and deterministic unique port matcher; no motion/parameter replay |
 | monitoring.py | 後續電流更新優化：新增第二頁 current_only 排程；完整／安全監控沿用原排程 |
-| worker.py | 後續電流更新優化：_monitor 選擇排程時加入權威狀態安全檢查與回報 current_only；不改讀寫編碼與馬達控制 |
+| worker.py | 後續優化：_monitor 保留安全排程；_demo_limit 在完整請求間穿插監控、STOP 優先服務、逐請求計時，移除未使用的 0x70 重讀；不改 UART 編碼與馬達控制限制 |
 | tests/test_v018_current_only.py (new) | 僅電流排程、worker 安全覆寫、寫入讀回、Qt 暫停欄位與逾時門檻測試 |
 | hud_widgets.py | Consume shared colors; wrap gauge captions; empty Tooltip retained |
 | tests/test_v018_ui.py (new) | Real Qt widget tests plus isolated preferences, recorded worker, fake-device worker read-only handshake, timer/cross-tab/stale-state checks |
@@ -36,3 +36,12 @@ The existing QThread is the sole serial owner. The UI adds no serial driver or
 blocking serial I/O. Hardware tests and Windows captures remain unrun.
 
 後續電流更新優化的詳細理由、限制與測試見 `CURRENT_ONLY_REPORT.md`。最終測試數量以 `pytest.txt` 為準。
+
+## 滑桿連續監控追加變更
+
+- main.py：50 ms 合併、放開滑桿即 flush、動態監控偏好快照、inline samples 不結束 foreground 操作、拖動期間 CSV 與計時 Log。
+- worker.py：configure_demo_monitor/_demo_checkpoint、在 _demo_limit 的 UART 請求間監控、仍單一序列埠 owner；每次寫入完整驗證與讀回。
+- tests/test_v018_ui.py：記錄 worker 加入偏好設定接口，原 250 ms timer 測試改驗證 50 ms 合併。
+- tests/test_v018_current_only.py：驗證保留 live Device Code，移除未使用的 firmware 查詢。
+- tests/test_v018_responsive_tuning.py：12 個假延遲、無並行請求、關閉監控、STOP、讀回失敗、過載與 GUI pending 回歸案例。
+- RESPONSIVE_TUNING_REPORT.md/responsive_simulation.json：量測邊界、模擬結果與限制。
